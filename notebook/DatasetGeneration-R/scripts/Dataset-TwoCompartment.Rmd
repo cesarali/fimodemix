@@ -1,0 +1,313 @@
+---
+title: "Dataset generation: 2-CMT model with i.v. bolus dosing (Robbie PK model)"
+author: "Niklas Hartung"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Scope 
+
+Wwe consider a typical scenario for pharmacokinetics of monoclonal antibodies
+(following a paper by Robbie et al. Antimicrobial Agents and Chemotherapy, 2012):
+
+* two-compartment model; multiple i.v. bolus dosing
+* sparse sampling for some sampling intervals
+* two continuous covariates: age and body weight
+
+### Preliminaries
+
+Required packages
+
+```{r}
+library(deSolve)
+library(dplyr)
+library(ggplot2)
+library(MASS)
+```
+
+Set a seed for reproducible results:
+
+```{r}
+set.seed(1)
+```
+
+Helper function to define a realistic body weight distribution for a certain age
+(Sumpter & Holford, Pediatr Anesth. 2011):
+
+```{r}
+sumpter <- function(age, sex = "m", iiv = TRUE) {
+    
+    FFEM_WTMAX <- ifelse(sex == "m", 1, 0.884)
+
+    DPY <- 365.25  #day/year
+    DPW <- 7       #day/week
+    WPY <- DPY/DPW #week/year
+
+    age <- age * WPY      # years --> weeks
+
+    n <- length(age)
+
+    pma <- age+40  #postmenstrual age [weeks] = postnatal age + 40 w gestation
+
+    #parameters from Sumpter & Holford Pediatr Anesth. 2011
+    WT_max1   <- 2.76     #kg
+    TM50_WT1  <- 38.5     #weeks
+    Hill1_WT1 <- 12.9
+    Hill2_WT1 <- 2.74
+    WT_max2   <- 16.4    #kg
+    TM50_WT2  <- 2.10*WPY #weeks
+    Hill1_WT2 <- 2.04
+    Hill2_WT2 <- 1
+    WT_max3   <- 40.2     #kg
+    TM50_WT3  <- 12.4*WPY #weeks
+    Hill1_WT3 <- 2.87
+    Hill2_WT3 <- 0
+    TLAG_WT4  <- TM50_WT3
+    WT_max4   <- 33.6          #kg
+    THALF_WT4 <- 3.61*WPY      #weeks
+    THALF_PPV_AGE <- 3.52*WPY  #years to [weeks]
+
+    RUV_CV <- 0.074
+
+    #jointly simulate IIV parameters
+    if (iiv) {
+        corrmat <- matrix(data = c(1,     0.753, 0,0,-0.698,
+                                   0.753, 1,     0,0,-0.957,
+                                   0,     0,     1,0,0,
+                                   0,     0,     0,1,0,
+                                   -0.698,-0.957,0,0,1),
+                          nrow = 5, ncol = 5)
+        corrmat <- diag(rep(1,5))
+        ppv_sd <- c(0.531, 0.388, 0.466, 0.245, 0.0572) #ppv_sd[5] 10 times smaller than in REF
+        etas <- MASS::mvrnorm(n, mu = rep(0,5), Sigma = diag(ppv_sd)*corrmat*diag(ppv_sd))
+    }
+
+    #maturation process 1
+    Hill_WT1 <- ifelse(pma < TM50_WT1, Hill1_WT1, Hill2_WT1)
+    Fmat1 <- 1/(1+(TM50_WT1/pma)^Hill_WT1)
+    WT1 <- Fmat1 * FFEM_WTMAX * WT_max1
+
+    #maturation process 2
+    Hill_WT2 <- ifelse(pma < TM50_WT2, Hill1_WT2, Hill2_WT2)
+    Fmat2 <- 1/(1+(TM50_WT2/pma)^Hill_WT2)
+    WT2 <- Fmat2 * WT_max2 # NOT * FFEM_WTMAX !
+
+    #maturation process 3
+    Hill_WT3 <- ifelse(pma < TM50_WT3, Hill1_WT3, Hill2_WT3)
+    Fmat3 <- 1/(1+(TM50_WT3/pma)^Hill_WT3)
+    WT3 <- Fmat3 * WT_max3 # NOT * FFEM_WTMAX !
+
+    # weight 4
+    WT4 <- ifelse(pma < TLAG_WT4,
+                  0,
+                  FFEM_WTMAX*WT_max4*(1-exp(-log(2)/THALF_WT4*(pma-TLAG_WT4))))
+
+    if (iiv) {
+        WT1 <- WT1 * exp(etas[ ,1])
+        WT2 <- WT2 * exp(etas[ ,2])
+        WT3 <- WT3 * exp(etas[ ,3])
+        WT4 <- WT4 * exp(etas[ ,4])
+    }
+    BW <- WT1+WT2+WT3+WT4
+    if (iiv) {
+        IIV_ <- exp(-log(2)/THALF_PPV_AGE * pma)
+        BW <- BW * exp(etas[ ,5] * IIV_)                #age-dependent variability
+        BW <- BW * (1 + rnorm(length(BW), sd = RUV_CV)) #residual variability
+    }
+    return(BW)
+}
+```
+
+
+### Model definition
+
+Number of individuals (IDs)
+
+```{r}
+N <- 100
+```
+
+Covariate distribution:
+
+* 50/50 split males/females
+* uniform age between 0 and 20 years
+* draw BW based on a realistic distribution
+
+```{r}
+sex <- rep(c("m","f"), length.out = N)
+age <- runif(N, max = 20)
+BW  <- sumpter(age = age, sex = sex)
+```
+
+Plotting the covariate distribution, for illustration
+
+```{r}
+ggplot() + geom_point(aes(x = age, y = BW, color = sex))
+```
+
+Dosing scheme: monthly body weight-normalized i.v. bolus doses
+
+```{r}
+reldose <- 15  # [mg/kg]
+ndosing <- 5   #
+interval <- 30 # [days] (monthly dosing)
+D  <- vector(mode = "list", length = N)
+tD <- seq(from = 0, by = interval, length = ndosing) # [days]
+for (i in 1:N) {
+    D[[i]] <- rep(BW[i] * reldose, times = ndosing)  # [mg]
+}
+route <- "iv_bolus"
+```
+
+Sampling times (rich sampling in first dosing interval, sparse thereafter)
+
+```{r}
+t_obs <- c(c(0.5,1,2,3,4,7,14,21), #  sampling times (in [days])
+           interval + c(10,25),
+           2*interval + c(10,25), 
+           3*interval + c(10,25),
+           4*interval + c(10,25))       
+n_obs <- length(t_obs)             # number of samples
+```
+
+Hyperparameters: 
+
+* fixed effects `fe`
+* standard deviation of random effects `sd_re`
+* residual unexplained variability standard deviation `sd_ruv` 
+
+```{r}
+fe <- c(CL   = 198,       # [mL/day]
+        V1   = 4090,      # [mL]
+        V2   = 2230,      # [mL]
+        Q    = 879,       # [mL/day]
+        beta = 1 - 0.411, # unitless
+        TCL  = 62.3)      # [months]
+sd_re <- c(V1 = 0.617,    # unitless
+           CL = 0.487)    # unitless
+sd_ruv <- 0.0639          # unitless, proportional error on linear scale
+```
+
+Individual parameters are affected by covariates:
+
+* body weight on `V1`, `V2` and `Q`;
+* body weight and age on `CL`
+
+In addition, a log-normally distributed random effect (to ensure positivity) is 
+applied to `CL` and `V1` (but not `V2` or `Q`).
+
+```{r}
+theta <- matrix(NA, nrow = N, ncol = 4, dimnames = list(NULL, c("CL","V1","Q","V2")))
+for (i in 1:N) {
+    
+    relbw <- BW[i]/70
+    mat <- 1 - fe[["beta"]] * exp(-(age[i]/4.35)*log(2)/fe[["TCL"]])
+
+    theta[i,"CL"] <- fe[["CL"]] * relbw^0.75 * mat * rlnorm(n = 1, meanlog = 0, sdlog = sd_re[["CL"]])
+    theta[i,"V1"] <- fe[["V1"]] * relbw * rlnorm(n = 1, meanlog = 0, sdlog = sd_re[["V1"]])
+    theta[i,"Q"]  <- fe[["Q"]]  * relbw^0.75
+    theta[i,"V2"] <- fe[["V2"]] * relbw
+    
+}
+head(theta)
+```
+
+ODE right-hand side
+
+```{r}
+rhs <- function(t, y, param) {
+    # change from macro- to micro-parametrization
+    ke  <- param[["CL"]]/param[["V2"]]
+    k12 <- param[["Q"]] /param[["V1"]]
+    k21 <- param[["Q"]] /param[["V2"]]
+    
+    # two-compartment ODEs
+    dX <- c(
+        k21 * y[["per"]] - (k12+ke) * y[["pla"]] ,
+        k12 * y[["pla"]] - k21 * y[["per"]]
+    )
+    list(dX)
+}
+```
+
+Solving ODE and computing model prediction:
+
+```{r}
+y_pred <- vector(mode = "list", length = N)
+for (i in 1:N) {
+    theta_i <- theta[i, ]
+    x0 <- c(pla = 0, per = 0)
+   
+    # encoding repeated dosing via "events"
+    eventdat <- data.frame(
+        var  = "pla",
+        time = tD,
+        value = D[[i]],
+        method = "add")
+    
+    # event times need to be included in ODE solver times
+    t_ode <- sort(c(tD,t_obs))
+
+    # ODE solution
+    x_sol <- ode(y      = x0, 
+                 times  = t_ode,
+                 func   = rhs,  
+                 parms  = theta_i,
+                 events = list(data = eventdat) # handling of repeated dosing
+                 )[t_ode %in% t_obs,"pla"]                    # remove dosing times from ode solution
+    y_pred[[i]] <- x_sol / theta_i[["V1"]]
+}
+```
+
+The (hierarchical) data:
+
+```{r}
+df <- data.frame(
+    ID    = rep(1:N, each = n_obs),
+    time  = rep(t_obs, times = N),
+    y_obs = unlist(y_pred) *(1 + rnorm(n = N*n_obs, mean = 0, sd = sd_ruv)),
+    dose  = NA,
+    route = NA
+) |>
+    rbind(data.frame(
+        ID = rep(1:N, each = ndosing),
+        time = rep(tD, times = N),
+        y_obs = NA,
+        dose = unlist(D),
+        route = route
+    )) |>
+    arrange(ID,time)
+```
+
+Peek at the data:
+
+```{r}
+head(df, n = 30)
+```
+
+Visualization (just a subset of individuals, for easier visualization),
+including dosing cycles
+
+```{r}
+ggplot(subset(df, ID <= 10), 
+       aes(x=time,y=y_obs,group = ID)) + 
+    geom_line() + 
+    geom_line(data = subset(df, ID <= 10 & !is.na(y_obs)), linetype = "dashed") +
+    geom_point() +
+    geom_vline(xintercept = tD, color = "blue") +
+    xlab("Time [days]") + 
+    ylab("Concentration [mg/L]")
+```
+
+Write to file:
+
+```{r}
+write.csv(df, file = "../data/two-compartment-pk.csv")
+```
+
+
+

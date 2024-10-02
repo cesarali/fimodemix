@@ -1,0 +1,223 @@
+---
+title: "Dataset generation: 1-CMT model with oral dosing (Hamberg Warfarin PK model)"
+author: "Niklas Hartung"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Scope 
+
+We consider a (somewhat simplified) model for pharmacokinetics of Warfarin 
+by Hamberg et al.: 
+
+* one compartment with a single oral dose (=2 ODEs);
+* different sampling times and numbers of samples across individuals;
+* four continuous covariates (body weight and three variables relating to CYP2C9
+  genotype, already converted from categorical to continuous).
+
+### Preliminaries
+
+Required packages
+
+```{r}
+library(deSolve)
+library(dplyr)
+library(ggplot2)
+```
+
+Set a seed for reproducible results:
+
+```{r}
+set.seed(1)
+```
+
+### Model definition
+
+Population and sample size
+
+```{r}
+N <- 50                          # nb. of individuals (IDs)
+tfull    <- c(8, 16, 24, 48, 72) # planned sampling times (in [h])
+pMissing <- 0.1                  # probability that an observation is missing
+nfull    <- length(tfull)        # number of planned samples
+```
+
+Individual sampling times (some samples may be missing and actual sampling times
+may differ from the nominal ones)
+
+```{r}
+t_obs <- vector(mode = "list", length = N)
+for (i in 1:N) {
+    t_i <- tfull[as.logical(rbinom(n = nfull, size = 1, p = 1-pMissing))]  # missing samples
+    t_i <- t_i + rnorm(n = length(t_i))                                    # actual sampling time
+    t_obs[[i]] <- t_i
+}
+# look at the first few IDs:
+head(t_obs)
+```
+
+Covariate distribution:
+
+* draw body weight from a normal distribution (for simplicity)
+* draw CYP2C9 alleles according to reported frequencies
+
+```{r}
+BWref <- 80
+BWsd  <- 15
+BW <- rnorm(n = N, mean = BWref, sd = BWsd)
+
+#                     *1     *2    *3
+pCYP2C9Alleles <- c(81.4,  11.2,  7.4) / 100
+CYP2C9 <- rmultinom(n = N, size = 2, prob = pCYP2C9Alleles)
+```
+
+Dosing scheme: single oral flat dosing
+
+```{r}
+D     <- 3                   # [mg] 
+route <- "oral"
+```
+
+Hyperparameters: 
+
+* fixed effects `fe`
+* standard deviation of random effects `sd_re`
+* residual unexplained variability standard deviation `sd_ruv` 
+
+```{r}
+fe <- c(ka  = 0.2,          # [1/h]
+        Vd  = 14.3,         # [L]
+        CL1 =  0.174,       # [L/h]
+        CL2 =  0.0879,      # [L/h]
+        CL3 =  0.0422)      # [L/h]
+sd_re <- c(Vd = 0.054,      # unitless
+           CL = 0.089)      # unitless
+sd_ruv <- 0.099             # [mg/L], error on log-scale
+```
+
+Individual parameters are affected by covariates:
+
+* body weight on `Vd`;
+* body weight and CYP2C9 genotype on `CL`
+
+In addition, a log-normally distributed random effect (to ensure positivity) is applied.
+
+```{r}
+theta <- matrix(NA, nrow = N, ncol = 3, dimnames = list(NULL, c("Vd","CL","ka")))
+for (i in 1:N) {
+    relbw <- BW[i]/70
+
+    theta[i,1] <- fe[["Vd"]] * relbw * rlnorm(n = 1, meanlog = 0, sdlog = sd_re[["Vd"]])
+    theta[i,2] <- fe[c("CL1","CL2","CL3")] %*%  CYP2C9[,i] * relbw^0.75 * rlnorm(n = 1, meanlog = 0, sdlog = sd_re[["CL"]])
+    theta[i,3] <- fe[["ka"]]
+}
+head(theta)
+```
+
+ODE right-hand side (assuming full bioavailability)
+
+```{r}
+rhs <- function(t, y, param) {
+    dX <- c(
+        -param[["ka"]] * y[["gut"]],
+         param[["ka"]] * y[["gut"]] - param[["CL"]] / param[["Vd"]] * y[["pla"]]
+    )
+    list(dX)
+}
+```
+
+Solving ODE and computing model prediction:
+
+```{r}
+y_pred <- vector(mode = "list", length = N)
+for (i in 1:N) {
+    theta_i <- theta[i, ]
+    x0 <- c(gut = D, pla = 0)
+    
+    # ODE solution: amount in CMT 2; observable: concentration in CMT 2(= amount/volume)
+    x_sol <- ode(y = x0, 
+                 times = c(0,t_obs[[i]]),     # add dosing time as initial condition
+                 func = rhs,  
+                 parms = theta_i)[-1,"pla"]   # remove dosing time from ode solution
+    y_pred[[i]] <- x_sol / theta_i[["Vd"]]
+}
+```
+
+
+The (hierarchical) data:
+
+```{r}
+nobs <- vapply(t_obs,length,1)
+df <- data.frame(
+    ID    = rep(1:N, times = nobs),
+    time  = unlist(t_obs),
+    y_obs = unlist(y_pred) * rlnorm(n = sum(nobs), meanlog = 0, sdlog = sd_ruv),
+    dose  = NA,
+    route = NA
+) |>
+    rbind(data.frame(
+        ID = 1:N,
+        time = rep(0, N),
+        y_obs = NA,
+        dose = D,
+        route = route
+    )) |>
+    arrange(ID,time)
+```
+
+Peek at the data:
+
+```{r}
+head(df, n = 20)
+```
+
+Visualization (just a subset of individuals, for easier visualization)
+
+```{r}
+ggplot(subset(df, ID <= 10), 
+       aes(x=time,y=y_obs,group = ID)) + 
+    geom_line() + 
+    geom_point() +
+    xlab("Time [h]") + 
+    ylab("Concentration [mg/L]")
+```
+
+Write to file:
+
+```{r}
+write.csv(df, file = "../data/hamberg-warfarin-pk.csv")
+```
+
+
+
+
+### Dataset: 2-CMT model with nonlinear clearance
+
+Now, we consider a more complex scenario:
+
+* two-compartment model
+* multiple dosing
+* 
+
+Study design
+
+```{r}
+N <- 1000        # nb. of individuals
+nmax <- 10
+tnom <- c()      # nominal observation times
+
+
+sample(c(TRUE,FALSE), size = length(tnom), replace = TRUE, prob = c(0.8,0.2))
+
+n <- rbinom(N, size = 10, prob = 0.8)
+
+```
+
+
+
+
+

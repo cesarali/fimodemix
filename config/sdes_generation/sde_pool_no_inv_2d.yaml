@@ -1,0 +1,29 @@
+dataset_name: state_sde_no_inv
+
+n_workers: 128
+chunksize: 100
+batch_size: 500
+
+train:
+  seed: 42
+  num_samples: 1_000_000
+  n_paths: 100
+  output_path: data/state_sde/sde-expressions/dimension_2/
+
+  sde:
+    dimension: 2
+    hyper_grid:
+      name: Regular
+      lower_bound: 1
+      upper_bound: 10
+      grid_size: 640
+      grid_size_eval: 128
+
+    initial_condition:
+      distribution: Normal
+      parameters:
+        mean: [0, 0]
+        std: [1, 1]
+
+    drift_pool: data/state_sde/expressions-pool/dimension_2/2d-odeformer-no-inv-pool-filtered.csv
+    diffusion_pool: data/state_sde/expressions-pool/dimension_2/2d-simple-pool.csv

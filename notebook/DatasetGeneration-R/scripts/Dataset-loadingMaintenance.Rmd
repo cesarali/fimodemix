@@ -1,0 +1,217 @@
+---
+title: "Dataset generation: 1-CMT model with loading/maintenance doses"
+author: "Niklas Hartung"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Scope
+
+We consider the following setting: 
+
+* one compartment, a single i.v. infusion as loading dose, 
+  followed by oral maintenance doses (= 3 ODEs);
+* identical sampling times across individuals;
+* no covariates.
+
+### Preliminaries
+
+Required packages
+
+```{r}
+library(deSolve)
+library(logitnorm)
+library(dplyr)
+library(ggplot2)
+```
+
+Set a seed for reproducible results:
+
+```{r}
+set.seed(1)
+```
+
+### Model definition
+
+Number of individuals (IDs) 
+
+```{r}
+N <- 1000
+```
+
+Dosing scheme: 1h i.v. infusion followed by oral doses
+
+```{r}
+infusion_dur <- 1    # [h]
+infusion_amt <- 100
+infusion_rate<- infusion_amt/infusion_dur # for use in ODEs
+n_maintain   <- 4
+maintain_amt <- 200
+D            <- rep(c(infusion_amt, maintain_amt), 
+                    times = c(1,n_maintain))    # [mg] 
+tD           <- seq(0, by = 24, length = n_maintain + 1)    # in [h], daily dose
+route        <- rep(c("iv_infusion","oral"), times = c(1,n_maintain)) 
+```
+
+Sampling times
+
+```{r}
+t_obs <- c(0.5,1,2,4,8, 24+c(2,8), 48+c(2,8), 72+c(2,8), 96+c(2,8))  # sampling times
+n_obs <- length(t_obs)         # nb. of samples per ID
+```
+
+Hyperparameters: 
+
+* fixed effects `fe`
+* standard deviation of random effects `sd_re`
+* residual unexplained variability standard deviation `sd_ruv` 
+
+```{r}
+fe     <- c(ka   = 0.2,   # [1/h]
+            Fbio = 0.4,   # unitless
+            V    = 20,    # [L]
+            CL   =  3)    # [L/h]
+sd_re  <- c(ka   = 0.1,   # unitless
+            Fbio = 0.5,   # unitless
+            V  = 0.4,     # unitless
+            CL = 0.3)     # unitless
+sd_ruv <- 0.2             # [mg/L]
+```
+
+Individual parameters are log-normally distributed to ensure positivity,
+except for `Fbio`, which is logit-normally distributed such that it stays in [0,1]:
+
+```{r}
+theta <- matrix(NA, nrow = N, ncol = 4, dimnames = list(NULL, c("ka","Fbio","V","CL")))
+for (i in 1:N) {
+    
+    theta[i,"ka"]   <- rlnorm(n = 1, meanlog = log(fe[["ka"]]),     sdlog = sd_re[["ka"]])
+    theta[i,"Fbio"] <- rlogitnorm(n = 1,  mu = logit(fe[["Fbio"]]), sigma = sd_re[["Fbio"]])
+    theta[i,"V"]    <- rlnorm(n = 1, meanlog = log(fe[["V"]]),      sdlog = sd_re[["V"]])
+    theta[i,"CL"]   <- rlnorm(n = 1, meanlog = log(fe[["CL"]]),     sdlog = sd_re[["CL"]])
+    
+}
+head(theta)
+```
+
+Forcing function encoding the infusion
+
+```{r}
+infusion_rate_function <- approxfun(x = c(0, infusion_dur), 
+                                    y = c(infusion_rate, 0), 
+                                    method = "constant", 
+                                    rule = 2)
+```
+
+ODE right-hand side
+
+```{r}
+rhs <- function(t, y, param) {
+    
+    # Infusion only happens if there's drug in the bag
+    infusion <- if (y[["bag"]] > 0) infusion_rate else 0
+  
+    dX <- c(
+        -param[["ka"]] * y[["gut"]],                                  # gut 
+         -infusion,                                                   # bag
+         param[["ka"]] * param[["Fbio"]] * y[["gut"]] +               # plasma 
+            infusion  - param[["CL"]] / param[["V"]] * y[["pla"]]     # plasma continued
+    )
+    list(dX)
+}
+```
+
+Encoding repeated dosing via "events"
+
+```{r}
+eventdat <- data.frame(
+    var  = unname(c("iv_infusion" = "bag", "oral" = "gut")[route]),
+    time = tD,
+    value = D,
+    method = "add"
+) |> 
+    rbind(data.frame(
+        var = "bag",
+        time = infusion_dur,
+        value = 0,
+        method = "rep"
+    )) |>
+    arrange(time)
+```
+        
+Solving ODE and computing model prediction:
+
+```{r}
+y_pred <- vector(mode = "list", length = N)
+for (i in 1:N) {
+    theta_i <- theta[i, ]
+    x0 <- c(gut = 0, bag = 0, pla = 0)
+    
+    # event times need to be included in ODE solver times
+    t_ode <- sort(c(tD,t_obs))
+
+    # ODE solution: amount; observable: concentration (= amount/volume)
+    x_sol <- ode(y = x0, 
+                 times = t_ode,         
+                 func = rhs,
+                 parms = theta_i,
+                 events = list(data = eventdat) # handling of repeated dosing
+             )[t_ode %in% t_obs,"pla"]          # remove dosing times from ode solution
+    y_pred[[i]] <- x_sol / theta_i["V"]
+}
+```
+
+### Create, visualize and write data
+
+The (hierarchical) data:
+
+```{r}
+df <- data.frame(
+        ID    = rep(1:N, each = length(t_obs)),
+        time  = rep(t_obs, N),
+        y_obs = unlist(y_pred) + rnorm(n = N*n_obs, mean = 0, sd = sd_ruv),
+        dose  = NA,
+        route = NA,
+        duration = NA
+    ) |>
+    rbind(data.frame(
+        ID   = rep(1:N, each = n_maintain + 1),
+        time = rep(tD, times = N),
+        y_obs = NA,
+        dose = rep(D, times = N),
+        route = rep(route, times = N),
+        duration = rep(ifelse(route == "iv_infusion", infusion_dur, NA), times = N)
+    )) |>
+    arrange(ID,time)
+```
+
+Peek at the data:
+
+```{r}
+head(df, n = 30)
+```
+
+Visualization (just a subset of individuals, for easier visualization),
+including dosing cycles
+
+```{r}
+ggplot(subset(df, ID <= 10 & !is.na(y_obs)), 
+       aes(x=time,y=y_obs,group = ID)) + 
+    geom_line() + 
+    geom_point() +
+    geom_vline(xintercept = tD, color = "blue") +
+    xlab("Time [h]") + 
+    ylab("Concentration [mg/L]")    
+
+```
+
+Write to file:
+
+```{r}
+write.csv(df, file = "../data/loadingMaintainance.csv")
+```
+
