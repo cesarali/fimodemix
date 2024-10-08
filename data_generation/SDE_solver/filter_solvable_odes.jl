@@ -25,15 +25,25 @@ catch
 end
 
 try
+    using JSON3
+catch
+    Pkg.add("JSON3")
+    using JSON3
+end
+
+try
     using ArgParse
 catch
     Pkg.add("ArgParse")
     using ArgParse
 end
 
-using ProgressBars: ProgressBar as ProgressBarBase
-
-
+try
+    using ProgressBars: ProgressBar as ProgressBarBase
+catch
+    Pkg.add("ProgressBars")
+    using ProgressBars: ProgressBar as ProgressBarBase
+end
 
 
 include("helpers.jl")
@@ -47,10 +57,11 @@ function parse_commandline()
         "--input"
         help = "ODEs to solve"
         arg_type = String
+        default="C:\\Users\\cesar\\Desktop\\Projects\\FoundationModels\\fimodemix\\data\\state_sde_full\\expressions_3d\\dimension_1\\3d-odeformer-no-inv-pool.csv"
         "--num_paths"
         help = "Number of paths to generate"
         arg_type = Int
-        default = 300
+        default = 3
         "--mean"
         help = "Mean of the initial conditino distribution"
         arg_type = Float32
@@ -64,8 +75,9 @@ function parse_commandline()
         arg_type = Int
         default = 1
         "--output"
-        help = "Output folder"
+        help = "Output file"
         arg_type = String
+        default="C:\\Users\\cesar\\Desktop\\Projects\\FoundationModels\\fimodemix\\data\\state_sde_full\\expressions_3d\\dimension_1\\3d-odeformer-no-inv-pool-filtered.csv"
     end
     return parse_args(s)
 end
@@ -145,7 +157,8 @@ function solvable_odes(odes, str_odes, dim, num_paths, mean, std, output_path, i
             return valid_paths, invalid_paths
         end
 
-        Threads.@threads for i in ProgressBarBase(1:end_idx-start_idx+1)
+        #Threads.@threads 
+        for i in ProgressBarBase(1:end_idx-start_idx+1)
             # for i in ProgressBarBase(1:end_idx-start_idx+1)
             path_stats = f(i)
             add!(odes_stats, join(str_odes[(batch-1)*minibatch_size+i], "; "), path_stats)

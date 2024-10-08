@@ -255,16 +255,16 @@
 
 1d-nonlinear-pool:
   n_workers: 5
-  chunksize: 5_00
+  chunksize: 5_0
   seed: 42
-  num_samples: 1_000
+  num_samples: 1_00
   dimension: 1
-  output_path: data/state_sde/expressions-pool/
+  output_path: data/state_sde/expressions-pool-desi2/
 
   expression:
     class_path: wienerfm.data_generation.odeformer.FunctionEnvironment
     use_queue: true
-    collate_queue_size: 200
+    collate_queue_size: 20
     use_sympy: true
     expand: false
     simplify: false
@@ -316,3 +316,4 @@
     c_min: 0.001
     c_max: 1.0
     skip_linear: true
+    debug: true

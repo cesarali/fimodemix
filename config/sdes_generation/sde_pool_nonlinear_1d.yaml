@@ -8,7 +8,7 @@ train:
   seed: 42
   num_samples: 1_000
   n_paths: 100
-  output_path: C:/Users/cesar/Desktop/Projects/FoundationalModelsForStochastics/fimodemix/data/expressions-pool-small/dimension_1/
+  output_path: C:/Users/cesar/Desktop/Projects/FoundationModels/fimodemix/data/state_sde/expressions-pool-desi2
 
   sde:
     dimension: 1
@@ -25,5 +25,5 @@ train:
         mean: [0]
         std: [1]
 
-    drift_pool: C:/Users/cesar/Desktop/Projects/FoundationalModelsForStochastics/fimodemix/data/expressions-pool-small/dimension_1/1d-nonlinear-pool-filtered.csv
-    diffusion_pool: C:/Users/cesar/Desktop/Projects/FoundationalModelsForStochastics/fimodemix/data/expressions-pool-small/dimension_1/1d-nonlinear-pool-filtered.csv
+    drift_pool: C:/Users/cesar/Desktop/Projects/FoundationModels/fimodemix/data/state_sde/expressions-pool-desi2/dimension_1/output.csv
+    diffusion_pool: C:/Users/cesar/Desktop/Projects/FoundationModels/fimodemix/data/state_sde/expressions-pool-desi2/dimension_1/output.csv

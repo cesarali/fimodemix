@@ -32,7 +32,7 @@ def bool_flag(s):
 class MyTimeoutError(BaseException):
     pass
 
-
+"""
 def timeout(seconds=10, error_message=os.strerror(errno.ETIME)):
     def decorator(func):
         def _handle_timeout(repeat_id, signum, frame):
@@ -63,7 +63,7 @@ def timeout(seconds=10, error_message=os.strerror(errno.ETIME)):
         return wraps(func)(wrapper)
 
     return decorator
-
+"""
 
 def zip_dic(lst):
     dico = {}

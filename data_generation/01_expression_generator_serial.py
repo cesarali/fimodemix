@@ -1,4 +1,3 @@
-import multiprocessing
 import os
 from functools import partial
 from pathlib import Path
@@ -20,14 +19,13 @@ from setup_helpers import load_yaml
     required=True,
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     help="Path to the YAML configuration file",
-    default=r"C:\Users\cesar\Desktop\Projects\FoundationModels\fimodemix\config\sdes_generation\ode_expressions_3d.yaml"
+    default=r"C:\Users\cesar\Desktop\Projects\FoundationModels\fimodemix\config\sdes_generation\ode_expressions_1d.yaml"
 )
 
 def main(cfg_path: Path):
     params = load_yaml(cfg_path)
     for pool_name, pool_params in params.items():
         generate_expressions(pool_name, pool_params)
-
 
 def generator(x, seed, expression_conf):
     rng = np.random.RandomState([seed, os.getpid(), x])
@@ -44,19 +42,18 @@ def generate_expressions(name: str, params: dict):
     expression_conf = EnvironmentConfig(**params.get("expression"))
     output_path_ = output_path / f"dimension_{expression_conf.min_dimension}"
     output_path_.mkdir(parents=True, exist_ok=True)
+
     with open(output_path_ / f"{name}.csv", "w") as f:
-        with multiprocessing.Pool(n_workers) as pool:
-            pbar = tqdm(total=num_samples, desc=f"Generating {name} samples")
-            for result in pool.imap_unordered(
-                partial(generator, seed=seed, expression_conf=expression_conf), range(num_samples), chunksize=chunksize
-            ):
-                f.write(",".join(result) + "\n")
-                pbar.update()
-                if pbar.n % 1000 == 0:
-                    f.flush()
+        pbar = tqdm(total=num_samples, desc=f"Generating {name} samples")
+        for x in range(num_samples):
+            result = generator(x, seed, expression_conf)
+            f.write(",".join(result) + "\n")
+            pbar.update()
+            if pbar.n % 1000 == 0:
+                f.flush()
+
     with open(output_path_ / f"{name}.yaml", "w") as f:
         yaml.dump(params, f)
-
 
 if __name__ == "__main__":
     main()

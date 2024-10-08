@@ -52,7 +52,8 @@ function parse_commandline()
         "--input"
         help = "ODEs to solve"
         arg_type = String
-        default = "C:/Users/cesar/Desktop/Projects/FoundationalModelsForStochastics/fimodemix/data/expressions-pool-small/dimension_1/state_sde_nonlinear.jsonl.gz"
+        # default = "C:/Users/cesar/Desktop/Projects/FoundationModels/fimodemix/data/state_sde/expressions-pool-desi2/state_sde_nonlinear.jsonl.gz"
+        default = "C:\\Users\\cesar\\Desktop\\Projects\\FoundationModels\\fimodemix\\data\\state_sde_full\\expressions_3d\\dimension_1\\state_sde.jsonl.gz"
         "--num_paths"
         help = "Number of paths to generate"
         arg_type = Int
@@ -60,7 +61,8 @@ function parse_commandline()
         "--output"
         help = "Output folder"
         arg_type = String
-        default = "C:/Users/cesar/Desktop/Projects/FoundationalModelsForStochastics/fimodemix/data/sdes_observations/"
+        #default = "C:/Users/cesar/Desktop/Projects/FoundationalModelsForStochastics/fimodemix/data/sdes_observations/"
+        default = "C:\\Users\\cesar\\Desktop\\Projects\\FoundationModels\\fimodemix\\data\\state_sde_full\\expressions_3d\\dimension_1"
         "--skip"
         help = "Number of examples to skip"
         arg_type = Int
@@ -68,7 +70,7 @@ function parse_commandline()
         "--num_samples"
         help = "Number of samples to process"
         arg_type = Int
-        default = 100
+        default = 1000
         "--use_diffusion"
         help = "Whether to use the diffusion term"
         arg_type = Bool

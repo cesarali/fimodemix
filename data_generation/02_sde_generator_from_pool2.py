@@ -3,18 +3,16 @@ import itertools
 import json
 import math
 import multiprocessing
-from functools import partial
 from pathlib import Path
+from functools import partial
 
 import click
 from tqdm import tqdm
-
 from setup_helpers import load_yaml
 
 
 def generate_combinations(diffusion_data, drift_batch):
     return list(itertools.product(drift_batch, [diffusion_data]))
-
 
 @click.command()
 @click.option(
@@ -24,12 +22,17 @@ def generate_combinations(diffusion_data, drift_batch):
     required=True,
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     help="Path to the YAML configuration file",
-    # default=r"C:\Users\cesar\Desktop\Projects\FoundationModels\fimodemix\config\sdes_generation\sde_pool_nonlinear_1d.yaml"
     default=r"C:\Users\cesar\Desktop\Projects\FoundationModels\fimodemix\config\sdes_generation\sde_pool_odeformer_3d.yaml"
-    #
+)
+@click.option(
+    "--diffusion",
+    "-d",
+    "select_diffusion",
+    default=True,
+    help="Specify whether to select a diffusion model (true or false). Default is True."
 )
 
-def main(cfg_path: Path):
+def main(cfg_path: Path, select_diffusion:bool):
     params = load_yaml(cfg_path)
     train_params = params.get("train")
     diffusion_pool_path = train_params["sde"]["diffusion_pool"]
@@ -41,7 +44,7 @@ def main(cfg_path: Path):
     num_samples = int(math.sqrt(num_samples))
 
     with open(diffusion_pool_path, "r") as f:
-        diffusion_data = [line.strip().split(",") for line in f][:num_samples]
+        diffusion_data = [line.strip().split(",") for line in f][:num_samples] if select_diffusion else []
 
     with open(drift_pool_path, "r") as f:
         drift_data = [line.strip().split(",") for line in f][:num_samples]
@@ -52,7 +55,7 @@ def main(cfg_path: Path):
     chunksize = params.get("chunksize")
     output_path = Path(train_params.get("output_path"))
 
-    total_iterations = len(drift_data) * len(diffusion_data)
+    total_iterations = len(drift_data) * (len(diffusion_data) if select_diffusion else 1)
     progress_bar = tqdm(total=total_iterations, desc="Generating combinations")
 
     output_path.mkdir(parents=True, exist_ok=True)
@@ -60,24 +63,38 @@ def main(cfg_path: Path):
     with gzip.open(output_path / f"{dataset_name}.jsonl.gz", "wt", encoding="utf-8") as f:
         with multiprocessing.Pool(n_workers) as pool:
             for i in range(0, len(drift_data), batch_size):
-                drift_batch = drift_data[i : i + batch_size]
+                drift_batch = drift_data[i: i + batch_size]
                 partial_generate_combinations = partial(generate_combinations, drift_batch=drift_batch)
-                for j in range(0, len(diffusion_data), batch_size):
-                    diffusion_batch = diffusion_data[j : j + batch_size]
-                    results = pool.imap_unordered(partial_generate_combinations, diffusion_batch, chunksize=chunksize)
-                    for r in itertools.chain.from_iterable(results):
+
+                if select_diffusion:
+                    for j in range(0, len(diffusion_data), batch_size):
+                        diffusion_batch = diffusion_data[j: j + batch_size]
+                        results = pool.imap_unordered(partial_generate_combinations, diffusion_batch, chunksize=chunksize)
+                        for r in itertools.chain.from_iterable(results):
+                            d = {
+                                "init_condition": [initial_conditions["parameters"]["mean"], initial_conditions["parameters"]["std"]],
+                                "drift": r[0],
+                                "diffusion": r[1],
+                                "grid": hyper_grid,
+                            }
+                            f.write(json.dumps(d) + "\n")
+                        if progress_bar.n % 1_000_000 == 0:
+                            f.flush()
+                        progress_bar.update(len(drift_batch) * len(diffusion_batch))
+                else:
+                    # Handle case where diffusion is not selected
+                    for r in drift_batch:
                         d = {
                             "init_condition": [initial_conditions["parameters"]["mean"], initial_conditions["parameters"]["std"]],
-                            "drift": r[0],
-                            "diffusion": r[1],
+                            "drift": r,
+                            "diffusion": None,  # or some default value if needed
                             "grid": hyper_grid,
                         }
                         f.write(json.dumps(d) + "\n")
-                    if progress_bar.n % 1_000_000 == 0:
-                        f.flush()
-                    progress_bar.update(len(drift_batch) * len(diffusion_batch))
+                    progress_bar.update(len(drift_batch))
 
         progress_bar.close()
+
 
 if __name__ == "__main__":
     main()

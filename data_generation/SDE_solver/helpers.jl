@@ -96,7 +96,47 @@ function sol_to_vals(sol, num_paths, num_grid_points, num_dims)
     return solutions
 end
 
-function store_training_data(output_path, obs_times, obs_values, hypercube_locations, drift_functions_at_hypercube, init_condition_distr_parameters, f_strs, g_strs, patch_id)
+function store_training_data(output_path, obs_times, obs_values, hypercube_locations, drift_functions_at_hypercube, scaled_diffusion_functions_at_hypercube, init_condition_distr_parameters, f_strs, g_strs, patch_id)
+    """
+    Store training data.
+    """
+    if !isdir(output_path)
+        mkpath(output_path)
+    end
+    num_dims = size(obs_values, 4)
+    path = output_path * "dim-$(string(num_dims))" * "/$patch_id"
+    if !isdir(path)
+        mkpath(path)
+    end
+    h5open(path * "/obs_times.h5", "w") do file
+        write(file, "data", obs_times)
+    end
+    h5open(path * "/obs_values.h5", "w") do file
+        write(file, "data", obs_values)
+    end
+    h5open(path * "/hypercube_locations.h5", "w") do file
+        write(file, "data", hypercube_locations)
+    end
+    h5open(path * "/drift_functions_at_hypercube.h5", "w") do file
+        write(file, "data", drift_functions_at_hypercube)
+    end
+    h5open(path * "/scaled_diffusion_functions_at_hypercube.h5", "w") do file
+        write(file, "data", scaled_diffusion_functions_at_hypercube)
+    end
+    h5open(path * "/init_condition_distr_parameters.h5", "w") do file
+        write(file, "data", init_condition_distr_parameters)
+    end
+    h5open(path * "/f_strs.h5", "w") do file
+        write(file, "data", f_strs)
+    end
+    h5open(path * "/g_strs.h5", "w") do file
+
+        write(file, "data", g_strs)
+    end
+end
+
+
+function store_training_data(output_path, obs_times, obs_values, hypercube_locations, drift_functions_at_hypercube, init_condition_distr_parameters, f_strs, patch_id)
     """
     Store training data.
     """
@@ -125,10 +165,6 @@ function store_training_data(output_path, obs_times, obs_values, hypercube_locat
     end
     h5open(path * "/f_strs.h5", "w") do file
         write(file, "data", f_strs)
-    end
-    h5open(path * "/g_strs.h5", "w") do file
-
-        write(file, "data", g_strs)
     end
 end
 

@@ -11,16 +11,40 @@ import sympy as sp
 from sympy.core.rules import Transform
 from sympy.parsing.sympy_parser import parse_expr
 
-from .generators import NodeList, all_operators
+from generators import NodeList, all_operators
 
 # import torch
-from .utils import timeout
+# from utils import timeout
+#from timeout_decorator import timeout, TimeoutError
 
 
+import threading
+
+class TimeoutError(Exception):
+    pass
+
+class Timeout:
+    def __init__(self, seconds):
+        self.seconds = seconds
+        self._timer = None
+
+    def __enter__(self):
+        self._timer = threading.Timer(self.seconds, self._raise_timeout)
+        self._timer.start()
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._timer.cancel()  # Cancel the timer if the block finishes before timeout
+        if exc_type is TimeoutError:
+            return True  # Suppress the exception if it's the timeout
+
+    def _raise_timeout(self):
+        raise TimeoutError("Operation timed out")
+    
 class InvalidPrefixExpression(BaseException):
     pass
 
 
+"""
 import signal
 from contextlib import contextmanager
 
@@ -44,7 +68,7 @@ def timeout(time):
 
 def raise_timeout(signum, frame):
     raise TimeoutError
-
+"""
 
 class Simplifier(ABC):
     local_dict = {
@@ -73,21 +97,28 @@ class Simplifier(ABC):
         if hasattr(tree, "nodes"):
             return NodeList([self.simplify_tree(node, expand, resimplify) for node in tree.nodes])
         else:
-            with timeout(1000):
-                if tree is None:
-                    return tree
-                expr = self.tree_to_sympy_expr(tree)
-                if expand:
-                    expr = self.expand_expr(expr)
-                if resimplify:
-                    expr = self.simplify_expr(expr)
-                new_tree = self.sympy_expr_to_tree(expr)
-                if new_tree is None:
-                    return tree
-                else:
-                    return new_tree.nodes[0]
-            return tree
-
+            try:
+                with Timeout(1000):
+                    if tree is None:
+                        return tree
+                    expr = self.tree_to_sympy_expr(tree)
+                    if expand:
+                        expr = self.expand_expr(expr)
+                    if resimplify:
+                        expr = self.simplify_expr(expr)
+                    new_tree = self.sympy_expr_to_tree(expr)
+                    if new_tree is None:
+                        return tree
+                    else:
+                        return new_tree.nodes[0]
+                return tree
+            except TimeoutError:
+                print("The operation timed out!")  # Handle the timeout exception as needed
+                return tree  # Return the original tree or handle it accordingly
+            except Exception as e:
+                print(f"An error occurred: {e}")  # Handle other exceptions
+                return tree  # You might want to handle this differently
+    
     @classmethod
     def readable_tree(cls, tree):
         if tree is None:
@@ -144,17 +175,17 @@ class Simplifier(ABC):
 
     @classmethod
     def round_expr(cls, expr, decimals=4):
-        with timeout(1):
+        with Timeout(1):
             expr = expr.xreplace(Transform(lambda x: x.round(decimals), lambda x: isinstance(x, sp.Float)))
         return expr
 
     def expand_expr(self, expr):
-        with timeout(1):
+        with Timeout(1):
             expr = sp.expand(expr)
         return expr
 
     def simplify_expr(self, expr):
-        with timeout(1):
+        with Timeout(1):
             expr = sp.simplify(expr)
         return expr
 

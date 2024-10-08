@@ -3,6 +3,13 @@
 #
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
+import sys
+from pathlib import Path
+
+# Add the current directory to sys.path
+current_dir = Path(__file__).resolve().parent
+if str(current_dir) not in sys.path:
+    sys.path.append(str(current_dir))
 
 import math
 from abc import ABC, abstractmethod
@@ -11,8 +18,8 @@ from typing import List, Union
 
 import numpy as np
 
-from .nodes import Node, NodeList
-from .utils import *
+from nodes import Node, NodeList
+from utils import *
 
 
 class Encoder(ABC):

@@ -16,10 +16,11 @@ import numexpr as ne
 import numpy as np
 import scipy.special
 
-from wienerfm.data_generation.odeformer import encoders
-from wienerfm.data_generation.odeformer.utils import *
+import encoders
+from utils import *
 
-from .nodes import Node, NodeList
+from nodes import Node, NodeList
+from timeout_decorator import timeout, TimeoutError
 
 
 # import numba as nb

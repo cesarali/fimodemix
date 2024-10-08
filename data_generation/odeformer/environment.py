@@ -4,6 +4,13 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import sys
+from pathlib import Path
+
+# Add the current directory to sys.path
+current_dir = Path(__file__).resolve().parent
+if str(current_dir) not in sys.path:
+    sys.path.append(str(current_dir))
 
 import re
 import traceback
@@ -14,8 +21,8 @@ from typing import Union
 # import math
 import numpy as np
 
-import wienerfm.data_generation.odeformer.generators as generators
-import wienerfm.data_generation.odeformer.simplifiers as simplifiers
+import generators
+import simplifiers
 
 from .utils import *
 
@@ -339,14 +346,15 @@ class FunctionEnvironment(object):
                 if self.params.skip_linear and bool(re.match(regex, str(expr["tree"]))):
                     continue
                 return expr, errors
-            except (AssertionError, MyTimeoutError):
-                continue
+            except (AssertionError, MyTimeoutError) as e:
+                if self.params.debug:
+                    print(f"Caught {type(e).__name__}: {str(e)}")
+                continue  # Loop restarts
             except:
                 if self.params.debug:
                     print(traceback.format_exc())
                 continue
 
-    @timeout(100000)
     def _gen_expr(self, train, nb_binary_ops=None, nb_unary_ops=None, dimension=None, n_points=None):
         (
             tree,
