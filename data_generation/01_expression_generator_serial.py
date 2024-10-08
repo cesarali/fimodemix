@@ -19,7 +19,7 @@ from setup_helpers import load_yaml
     required=True,
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     help="Path to the YAML configuration file",
-    default=r"C:\Users\cesar\Desktop\Projects\FoundationModels\fimodemix\config\sdes_generation\ode_expressions_1d.yaml"
+    default=r"..\config\sdes_generation\ode_expressions_1d.yaml"
 )
 
 def main(cfg_path: Path):
