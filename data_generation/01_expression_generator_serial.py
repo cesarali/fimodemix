@@ -34,17 +34,21 @@ def generate_expressions(name: str, params: dict):
     output_path_ = output_path / f"dimension_{expression_conf.min_dimension}"
     output_path_.mkdir(parents=True, exist_ok=True)
 
+    generated_expressions = []
     with open(output_path_ / f"{name}.csv", "w") as f:
         pbar = tqdm(total=num_samples, desc=f"Generating {name} samples")
         for x in range(num_samples):
             result = generator(x, seed, expression_conf)
-            f.write(",".join(result) + "\n")
+            generated_expressions.append(",".join(result))
+            f.write(generated_expressions[-1] + "\n")
             pbar.update()
             if pbar.n % 1000 == 0:
                 f.flush()
 
     with open(output_path_ / f"{name}.yaml", "w") as f:
         yaml.dump(params, f)
+
+    return generated_expressions
 
 if __name__ == "__main__":
     main()

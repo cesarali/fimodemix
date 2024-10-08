@@ -52,19 +52,22 @@ def main(cfg_path: Path, num_expressions: int, variables: List[float]):
         # Generate base expressions using the original generator
         base_expressions = generate_expressions(pool_name, pool_params)
         
-        # Generate multiple parameterized expressions for each base expression
-        all_expressions = []
-        for base_expr in base_expressions:
-            parameterized_expressions = generate_multiple_expressions(base_expr, num_expressions, variables)
-            all_expressions.extend(parameterized_expressions)
-        
-        # Save the generated expressions
-        output_path = Path(pool_params.get("output_path"))
-        output_path.mkdir(parents=True, exist_ok=True)
-        
-        with open(output_path / f"{pool_name}_parameterized.csv", "w") as f:
-            for expr in all_expressions:
-                f.write(f"{expr}\n")
+        if base_expressions:
+            # Generate multiple parameterized expressions for each base expression
+            all_expressions = []
+            for base_expr in base_expressions:
+                parameterized_expressions = generate_multiple_expressions(base_expr, num_expressions, variables)
+                all_expressions.extend(parameterized_expressions)
+            
+            # Save the generated expressions
+            output_path = Path(pool_params.get("output_path"))
+            output_path.mkdir(parents=True, exist_ok=True)
+            
+            with open(output_path / f"{pool_name}_parameterized.csv", "w") as f:
+                for expr in all_expressions:
+                    f.write(f"{expr}\n")
+        else:
+            print(f"No expressions generated for {pool_name}")
 
 if __name__ == "__main__":
     main()
