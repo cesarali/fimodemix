@@ -7,7 +7,9 @@ from pathlib import Path
 from typing import List
 
 from data_generation.setup_helpers import load_yaml
-from data_generation.expression_generator_serial import generate_expressions
+import importlib
+expression_generator = importlib.import_module("data_generation.expression_generator_serial")
+generate_expressions = expression_generator.generate_expressions
 
 def parameterize_expression(expression, variable=1.0):
     def replace_decimal(match):
