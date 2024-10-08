@@ -12,16 +12,7 @@ from differential_equations import ExpressionGenerator
 from setup_helpers import load_yaml
 
 @click.command()
-@click.option(
-    "--config",
-    "-c",
-    "cfg_path",
-    required=True,
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="Path to the YAML configuration file",
-    default=r"..\config\sdes_generation\ode_expressions_1d.yaml"
-)
-
+@click.option("--config", "-c", "cfg_path", required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path), help="Path to the YAML configuration file", default=r"..\config\sdes_generation\ode_expressions_1d.yaml")
 def main(cfg_path: Path):
     params = load_yaml(cfg_path)
     for pool_name, pool_params in params.items():

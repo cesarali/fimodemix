@@ -42,30 +42,9 @@ def generate_multiple_expressions(base_expression: str, num_expressions: int, va
     return expressions
 
 @click.command()
-@click.option(
-    "--config",
-    "-c",
-    "cfg_path",
-    required=True,
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="Path to the YAML configuration file",
-    default=r"..\config\sdes_generation\ode_expressions_1d.yaml"
-)
-@click.option(
-    "--num-expressions",
-    "-n",
-    type=int,
-    default=10,
-    help="Number of expressions to generate for each base expression"
-)
-@click.option(
-    "--variables",
-    "-v",
-    type=click.FloatRange(0.1, 10.0),
-    multiple=True,
-    default=[0.5, 1.0, 2.0],
-    help="Variables to use for parameterization (can be specified multiple times)"
-)
+@click.option("--config", "-c", "cfg_path", required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path), help="Path to the YAML configuration file", default=r"..\config\sdes_generation\ode_expressions_1d.yaml")
+@click.option("--num-expressions", "-n", type=int, default=10, help="Number of expressions to generate for each base expression")
+@click.option("--variables", "-v", type=click.FloatRange(0.1, 10.0), multiple=True, default=[0.5, 1.0, 2.0], help="Variables to use for parameterization (can be specified multiple times)")
 def main(cfg_path: Path, num_expressions: int, variables: List[float]):
     params = load_yaml(cfg_path)
     
