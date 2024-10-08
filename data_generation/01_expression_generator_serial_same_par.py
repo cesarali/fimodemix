@@ -6,9 +6,9 @@ import click
 from pathlib import Path
 from typing import List
 
-from data_generation.setup_helpers import load_yaml
+from setup_helpers import load_yaml
 import importlib
-expression_generator = importlib.import_module("data_generation.expression_generator_serial")
+expression_generator = importlib.import_module("01_expression_generator_serial")
 generate_expressions = expression_generator.generate_expressions
 
 def parameterize_expression(expression, variable=1.0):
