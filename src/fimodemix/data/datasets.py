@@ -67,7 +67,7 @@ class FIMSDEDataset(Dataset):
     def __getitem__(self, idx):
         file_idx, sample_idx = self._get_file_and_sample_index(idx)
 
-        # Get the tensor from the appropriate file
+        # Get the tensor from the appropriate file 
         obs_values = self.data[file_idx].obs_values[sample_idx]
         obs_times = self.data[file_idx].obs_times[sample_idx]
         diffusion_at_hypercube = self.data[file_idx].diffusion_at_hypercube[sample_idx]
@@ -83,7 +83,7 @@ class FIMSDEDataset(Dataset):
 
     def _get_file_and_sample_index(self, idx):
         """Helper function to determine the file index and sample index."""
-        file_idx = np.searchsorted(self.cumulative_lengths, idx)
+        file_idx = np.searchsorted(self.cumulative_lengths, idx,"right")
         sample_idx = idx if file_idx == 0 else idx - self.cumulative_lengths[file_idx - 1]
         return file_idx, sample_idx
 

@@ -1,0 +1,27 @@
+model:
+  name: FIM_sde # class name
+  fim_base: /cephfs_projects/foundation_models/models/FIMODE/fim_ode_minMax/model-checkpoint.pth # results/FIMODE/fim_ode_noisy_RevIN-0-1-experiment-seed-10_08-23-1833/checkpoints/best-model/model-checkpoint.pth # results/FIMODE/fim_ode_noisy_MinMax-experiment-seed-10_08-23-1331/checkpoints/best-model/model-checkpoint.pth # checkpoint
+  use_fim_normalization: true
+
+  loss_configs:
+    loss_scale_drift: 1.0
+    loss_scale_latent_embedding: 0.0
+    loss_scale_unsuperv_loss: 0.0
+
+  psi_2: # transformer for combining the windows
+    name: fim.models.blocks.Transformer
+    num_encoder_blocks: 4
+    dim_model: &dim_latent 512
+    dim_time: 1023 # 2*dim_latent -1 (expect dimension of initial input to transformer: dim_time + 1)
+    num_heads: 8
+    dropout: &dropout 0.1
+    residual_mlp:
+      name: fim.models.blocks.Mlp
+      in_features: *dim_latent
+      out_features: *dim_latent
+      hidden_layers: !!python/tuple [*dim_latent]
+      hidden_act:
+        name: torch.nn.SELU
+      output_act:
+        name: torch.nn.Identity
+      dropout: *dropout
