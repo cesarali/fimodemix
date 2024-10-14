@@ -1,4 +1,4 @@
-dataset_name: state_sde
+dataset_name: state_sde_1d
 
 n_workers: 5
 chunksize: 100
@@ -8,7 +8,7 @@ train:
   seed: 42
   num_samples: 10_000
   n_paths: 100
-  output_path: data/state_sde_full/expressions_3d/dimension_1/
+  output_path: data/state_sde/demo2/dimension_1/
 
   sde:
     dimension: 3
@@ -25,5 +25,5 @@ train:
         mean: [0, 0, 0]
         std: [1, 1, 1]
 
-    drift_pool: C:\\Users\\cesar\\Desktop\\Projects\\FoundationModels\\fimodemix\\data\\state_sde_full\\expressions_3d\\dimension_1\\3d-odeformer-no-inv-pool-filtered.csv
-    diffusion_pool: C:\\Users\\cesar\\Desktop\\Projects\\FoundationModels\\fimodemix\\data\\state_sde_full\\expressions_3d\\dimension_1\\3d-odeformer-no-inv-pool-filtered.csv
+    drift_pool: .\data\state_sde\demo2\dimension_1\1d-nonlinear-pool-filtered.csv
+    diffusion_pool: .\data\state_sde\demo2\dimension_1\1d-nonlinear-pool-filtered.csv

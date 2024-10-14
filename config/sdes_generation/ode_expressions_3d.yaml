@@ -193,9 +193,9 @@
   n_workers: 5
   chunksize: 1_00
   seed: 42
-  num_samples: 10_000
+  num_samples: 1_000
   dimension: 3
-  output_path: data/state_sde_full/expressions_3d
+  output_path: data/state_sde/demo
 
   expression:
     class_path: wienerfm.data_generation.odeformer.FunctionEnvironment
