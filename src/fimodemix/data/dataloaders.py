@@ -41,7 +41,7 @@ class FIMSDEpDataLoader():
     def _init_datasets(self):
             dataset_split_names = ["train", "test", "validation"]
             self.dataset = {
-                split_: FIMSDEpDataset(params=self.params,split="train")
+                split_: FIMSDEpDataset(params=self.params,split=split_)
                 for split_ in dataset_split_names
             }
     

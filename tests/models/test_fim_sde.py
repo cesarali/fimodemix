@@ -5,7 +5,7 @@ from fimodemix.configs.config_classes.fim_sde_config import FIMSDEpModelParams
 from fimodemix.data.dataloaders import (
     FIMSDEpDataLoader
 )
-from fimodemix.models.fim_sde import FIMSDEp
+from fimodemix.models.fim_sdep import FIMSDEp
 
 def test_fim_sde_p():
     #Set Parameters

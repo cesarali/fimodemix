@@ -1,3 +1,5 @@
+import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 
 import os
 import time
@@ -24,7 +26,11 @@ from fimodemix.data.dataloaders import (
     FIMSDEpDataLoader
 )
 from fimodemix.utils.experiment_files import ExperimentsFiles
-from fimodemix.models.fim_sde import FIMSDEp
+from fimodemix.models.fim_sdep import FIMSDEp
+from fimodemix.pipelines.sdep_pipeline import FIMSDEpPipeline
+
+from fimodemix.trainers.utils import save_hyperparameters_to_yaml
+from fimodemix.utils.helper import check_model_devices
 
 def train_fim_sde_p(params:FIMSDEpModelParams):
     """
@@ -55,7 +61,7 @@ def train_fim_sde_p(params:FIMSDEpModelParams):
 
     # Set up Model
     model = FIMSDEp(params)
-    model.save_hyperparameters_to_yaml(experiment_files.params_yaml)
+    save_hyperparameters_to_yaml(params,experiment_files.params_yaml)
 
     #Set up trainers
     trainer = Trainer(
@@ -65,12 +71,21 @@ def train_fim_sde_p(params:FIMSDEpModelParams):
         callbacks=[checkpoint_callback_best,
                    checkpoint_callback_last]
     )
-
     trainer.fit(model, 
                 dataloaders.train_it,
                 dataloaders.validation_it)
-
+    
+    # save test samples
+    with torch.no_grad():
+        model = model.to(torch.device("cuda"))
+        model.eval()
+        pipeline = FIMSDEpPipeline(model)
+        for batch_id,test_databatch in enumerate(dataloaders.test_it):
+            test_output = pipeline(test_databatch)
+            torch.save(test_output,
+                       os.path.join(experiment_files.sample_dir,"output_test_batch{0}.tr".format(batch_id)))
+        
 if __name__=="__main__":
-    params = FIMSDEpModelParams()
+    params = FIMSDEpModelParams(num_epochs=2)
     train_fim_sde_p(params)
 

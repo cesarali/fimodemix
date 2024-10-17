@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
+from fimodemix.utils.grids import define_mesh_points
 
 @dataclass
 class FIMSDEpDatabatch:
@@ -20,24 +21,6 @@ class FIMSDEpDatabatch:
     #init_condition_distr_parameters: torch.Tensor = None
     #f_strs: torch.Tensor = None
     #g_strs: torch.Tensor = None
-
-# Define Mesh Points
-def define_mesh_points(total_points = 100,n_dims = 1, ranges=[]):  # Number of dimensions
-    """
-    returns a points form the mesh defined in the range given the list ranges
-    """
-    # Calculate the number of points per dimension
-    number_of_points = int(np.round(total_points ** (1 / n_dims)))
-    if  len(ranges) == n_dims:
-    # Define the range for each dimension
-        ranges = [torch.linspace(ranges[_][0], ranges[_][1], number_of_points) for _ in range(n_dims)]
-    else:
-        ranges = [torch.linspace(-10.0, 10.0, number_of_points) for _ in range(n_dims)]
-    # Create a meshgrid for n dimensions
-    meshgrids = torch.meshgrid(*ranges, indexing='ij')
-    # Stack and reshape to get the observation points
-    points = torch.stack(meshgrids, dim=-1).view(-1, n_dims)
-    return points
 
 # Euler-Maruyama method for integrating SDEs
 def euler_maruyama_step(states,dt,drift_function,diffusion_function,drift_params,diffusion_params):
@@ -169,7 +152,7 @@ def define_fim_sde_data(
         num_hypercube_points
         )->FIMSDEpDatabatch:
     """
-    Defines hyper cube data
+    Defines hyper cube and evaluates drift and diffusion there
     """
     num_paths = obs_values.size(0)
     dimensions = obs_values.size(2)

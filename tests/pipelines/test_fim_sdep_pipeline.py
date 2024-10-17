@@ -3,8 +3,7 @@ import torch
 from fimodemix.data.dataloaders import FIMSDEpDataLoader
 from fimodemix.pipelines.sdep_pipeline import FIMSDEpPipeline
 from fimodemix.configs.config_classes.fim_sde_config import FIMSDEpModelParams
-from fimodemix.models.fim_sde import FIMSDEp,define_from_experiment_dir
-
+from fimodemix.models.fim_sdep import FIMSDEp,define_from_experiment_dir
 
 def test_vector_fields():
     params = FIMSDEpModelParams()
@@ -21,6 +20,5 @@ def test_pipelines():
     output = pipeline(dataloader.one_batch)
     print(output.path.shape)
     
-
 if __name__=="__main__":
     test_pipelines()

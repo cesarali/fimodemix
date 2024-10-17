@@ -61,19 +61,28 @@ class FIMSDEpPipeline:
         # Maybe {"logits": Tensor(...)}
         return None
     
+    def _evaluate_at_grid(self,databatch):
+        drift_in_grid = self.model(databatch,databatch.hypercube_locations)
+        hypercube_locations = databatch.hypercube_locations
+        dp = databatch.diffusion_parameters[:,None,:].repeat(1,databatch.hypercube_locations.size(1),1)
+        diffusion_in_grid = constant_diffusion(hypercube_locations,None,dp)
+        return drift_in_grid,diffusion_in_grid
+
     def __call__(self,databatch:FIMSDEpDatabatchTuple|FIMSDEpDatabatch):
         databatch = self.preprocess(databatch) # sent to device
         paths,times = self.model_euler_maruyama_loop(databatch)
+        drift_in_grid,diffusion_in_grid = self._evaluate_at_grid(databatch)
         return FIMSDEPipelineOutput(
-            grid=None,
-            drift_in_grid=None,
-            diffusion_in_grid=None,
+            grid=databatch.hypercube_locations,
+            drift_in_grid=drift_in_grid,
+            diffusion_in_grid=diffusion_in_grid,
             path=paths,
             time=times
         )
     
     def postprocess(self, model_outputs):
         pass
+
     # -------------------------- SAMPLES ------------------------------------------
     def model_as_drift_n_diffusion(
         self,
@@ -95,12 +104,12 @@ class FIMSDEpPipeline:
         D = X.size(1)
         B = X.size(0)
         X = X.unsqueeze(1) 
+        # Create a mask based on the dimensions
+        mask = torch.arange(D, device=X.device).expand(B, -1) < databatch.process_dimension  # Shape [B, D]
         # DRIFT
         drift = self.model(databatch,X).squeeze()
         # CURRENT SOLUTION DOES NOT TRAIN DIFFUSION
         diffusion = constant_diffusion(X.squeeze(),None,databatch.diffusion_parameters)
-        # Create a mask based on the dimensions
-        mask = torch.arange(D, device=X.device).expand(B, -1) < databatch.process_dimension  # Shape [B, D]
         # Apply the mask to X
         drift = drift * mask.float()  # Zero out elements where mask is False
         diffusion = diffusion * mask.float()  # Zero out elements where mask is False
@@ -166,5 +175,4 @@ class FIMSDEpPipeline:
         for step in tqdm(range(self.num_steps), desc="Simulating steps", unit="step"):
             states = self.model_euler_maruyama_step(states,databatch)  # Diffusion term
             paths[:, step + 1] = states.clone()  # Store new states
-
         return paths,times

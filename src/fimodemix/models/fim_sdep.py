@@ -35,9 +35,16 @@ from fimodemix.models.blocks import (
     TransformerModel
 )
 
-from typing import Any, Dict, Optional, Union, List,Tuple
 from dataclasses import dataclass,asdict, field
-from fimodemix.trainers.utils import log_hyperparameters_to_tensorboard
+from typing import Any, Dict, Optional, Union, List,Tuple
+from fimodemix.trainers.utils import (
+    log_hyperparameters_to_tensorboard,
+    save_hyperparameters_to_yaml
+)
+from fimodemix.utils.plots.vector_fields import (
+    plot_drift_diffussion,
+    select_process
+)
 
 # 1. Define your query generation model (a simple linear layer can work)
 class QueryGenerator(nn.Module):
@@ -63,7 +70,6 @@ class FIMSDEp(pl.LightningModule):
     This is the more simple architecture for 
 
     Stochastic Differential Equation Trainining
-
     """
     def __init__(
             self, 
@@ -79,7 +85,7 @@ class FIMSDEp(pl.LightningModule):
         self._create_model(params)
         if device is not None:
             self.to(device)
-
+        self.log_images = False
         self.DatabatchNameTuple = FIMSDEpDatabatchTuple
         # Important: This property activates manual optimization (Lightning)
         self.automatic_optimization = False
@@ -264,6 +270,8 @@ class FIMSDEp(pl.LightningModule):
                          drift_at_hypercube=databatch.drift_at_hypercube,
                          mask=databatch.mask)
         self.log('val_loss', loss, on_step=False, prog_bar=True, logger=True)
+        self.images_log(f_hats,databatch,batch_idx)
+            
         return loss
     
     def configure_optimizers(self):
@@ -273,10 +281,30 @@ class FIMSDEp(pl.LightningModule):
         # the logger you used (in this case tensorboard)
         tensorboard = self.logger.experiment
         log_hyperparameters_to_tensorboard(self.params,tensorboard)
+        
+    def on_train_epoch_start(self):
+        # Action to be executed at the start of each training epoch
+        self.log_images = False
 
-    def save_hyperparameters_to_yaml(self, file_path: str):
-        with open(file_path, 'w') as file:
-            yaml.dump(asdict(self.params), file)
+    def images_log(self,f_hats,databatch,batch_idx):
+        # 2D Images
+        if not self.log_images:
+            processes = select_process(f_hats,f_hats,databatch)
+            if processes is not None:
+                print(f"Validation batch index: {batch_idx}")
+                xy_hypercube,real_drift,real_diffusion,estimated_drift,estimated_diffusion = processes
+                # Generate and log the plot
+                fig = plot_drift_diffussion(
+                    xy_hypercube=xy_hypercube,
+                    real_drift=real_drift,
+                    real_diffusion=real_diffusion,
+                    estimated_drift=estimated_drift,
+                    estimated_diffusion=estimated_diffusion,
+                    show=False
+                )
+                # Log the figure using the logger (assuming TensorBoard)
+                self.logger.experiment.add_figure(f"drift_diffusion_{batch_idx}", fig, global_step=self.current_epoch)
+                self.log_images = True # log images once per epoch
 
 def define_from_experiment_dir(experiment_dir):
     # define the experiment dir where everything is located
@@ -289,6 +317,7 @@ def define_from_experiment_dir(experiment_dir):
     dataloaders = FIMSDEpDataLoader(params)
 
     return (
+        experiment_files,
         model,
         dataloaders
     )
