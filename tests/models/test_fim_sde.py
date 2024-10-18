@@ -9,7 +9,9 @@ from fimodemix.models.fim_sdep import FIMSDEp
 
 def test_fim_sde_p():
     #Set Parameters
-    params = FIMSDEpModelParams()
+    params = FIMSDEpModelParams(num_epochs=2,
+                                dim_time=19,
+                                x0_hidden_layers=[90,50])
     #Set up Dataloaders
     dataloaders = FIMSDEpDataLoader(params)
     # Set up Model
@@ -17,6 +19,7 @@ def test_fim_sde_p():
     # call forward
     databatch = dataloaders.one_batch
     f_hats = model(databatch)
+    print(f_hats.shape)
 
 def test_fim_sde_p_loss():
     #Set Parameters
@@ -34,5 +37,5 @@ def test_fim_sde_p_loss():
     print(loss)
 
 if __name__=="__main__":
-    test_fim_sde_p_loss()
+    test_fim_sde_p()
     

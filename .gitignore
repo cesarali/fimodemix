@@ -63,6 +63,7 @@ results/*
 data/*
 results/*
 general/*
+lightning_logs/*
 bitacora.txt
 
 # PyTorch models

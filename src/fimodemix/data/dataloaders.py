@@ -8,7 +8,7 @@ import torch
 import pandas as pd
 import torch.distributed as dist
 from torch.utils.data.dataloader import DataLoader
-
+import lightning.pytorch as pl
 from fimodemix.data.datasets import (
     FIMSDEpDataset,
     FIMSDEpDatabatch,
@@ -117,3 +117,23 @@ class FIMSDEpDataLoader():
     @property
     def test_set_size(self):
         return len(self.test)
+    
+class FIMSDEpDataModule(pl.LightningDataModule):
+    """wrapper for Lightning Datamodule"""
+    def __init__(self, params):
+        super().__init__()
+        self.params = params
+        self.dataloaders = FIMSDEpDataLoader(self.params)
+        
+    def setup(self, stage: Optional[str] = None) -> None:
+        self.dataloaders = FIMSDEpDataLoader(self.params)
+
+    def train_dataloader(self) -> DataLoader:
+        return self.dataloaders.train_it
+
+    def val_dataloader(self) -> DataLoader:
+        return self.dataloaders.validation_it
+
+    def test_dataloader(self) -> DataLoader:
+        return self.dataloaders.test_it
+

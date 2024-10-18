@@ -10,16 +10,15 @@ import numpy as np
 import torch.nn as nn
 
 from pathlib import Path
-import pytorch_lightning as pl
 from dataclasses import dataclass
 from dataclasses import dataclass,asdict, field
 from typing import Any, Dict, Optional, Union, List,Tuple
 
-from pytorch_lightning import Trainer
+from lightning.pytorch import Trainer
 from torch.utils.data import Dataset, DataLoader
 from lightning.pytorch.loggers import MLFlowLogger
-from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.loggers import TensorBoardLogger
+from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.loggers import TensorBoardLogger
 
 from fimodemix.configs.config_classes.fim_sde_config import FIMSDEpModelParams
 from fimodemix.data.dataloaders import (
@@ -30,7 +29,6 @@ from fimodemix.models.fim_sdep import FIMSDEp
 from fimodemix.pipelines.sdep_pipeline import FIMSDEpPipeline
 
 from fimodemix.trainers.utils import save_hyperparameters_to_yaml
-from fimodemix.utils.helper import check_model_devices
 
 def train_fim_sde_p(params:FIMSDEpModelParams):
     """
@@ -58,7 +56,6 @@ def train_fim_sde_p(params:FIMSDEpModelParams):
     
     # Set up Dataloaders
     dataloaders = FIMSDEpDataLoader(params)
-
     # Set up Model
     model = FIMSDEp(params)
     save_hyperparameters_to_yaml(params,experiment_files.params_yaml)
@@ -84,8 +81,11 @@ def train_fim_sde_p(params:FIMSDEpModelParams):
             test_output = pipeline(test_databatch)
             torch.save(test_output,
                        os.path.join(experiment_files.sample_dir,"output_test_batch{0}.tr".format(batch_id)))
+            break
         
 if __name__=="__main__":
-    params = FIMSDEpModelParams(num_epochs=2)
+    params = FIMSDEpModelParams(num_epochs=2,
+                                dim_time=20,
+                                x0_hidden_layers=[87,89])
     train_fim_sde_p(params)
 

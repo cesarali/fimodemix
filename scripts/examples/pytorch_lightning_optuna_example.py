@@ -124,10 +124,8 @@ def objective(trial: optuna.trial.Trial) -> float:
     output_dims = [
         trial.suggest_int("n_units_l{}".format(i), 4, 128, log=True) for i in range(n_layers)
     ]
-
     model = LightningNet(dropout, output_dims)
     datamodule = FashionMNISTDataModule(data_dir=DIR, batch_size=BATCHSIZE)
-
     trainer = pl.Trainer(
         logger=True,
         limit_val_batches=PERCENT_VALID_EXAMPLES,
@@ -140,7 +138,6 @@ def objective(trial: optuna.trial.Trial) -> float:
     hyperparameters = dict(n_layers=n_layers, dropout=dropout, output_dims=output_dims)
     trainer.logger.log_hyperparams(hyperparameters)
     trainer.fit(model, datamodule=datamodule)
-
     return trainer.callback_metrics["val_acc"].item()
 
 

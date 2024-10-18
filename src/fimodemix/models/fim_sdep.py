@@ -9,7 +9,7 @@ import torch.nn as nn
 from torch import Tensor
 
 from pathlib import Path
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 from dataclasses import dataclass
 from pytorch_lightning import Trainer
 from torch.utils.data import Dataset, DataLoader
@@ -94,7 +94,9 @@ class FIMSDEp(pl.LightningModule):
         self,
         params: dict | FIMSDEpModelParams,
     ):
+        """Defines all the nn Modules need for the architecture"""
         # Architecture ---------
+        self.encoding0_dim = params.dim_time + params.x0_out_features
         self.phi_t0 = TimeEncoding(params.dim_time)
 
         self.phi_x0 = Mlp(in_features=params.max_dimension,
@@ -106,12 +108,12 @@ class FIMSDEp(pl.LightningModule):
                          out_features=params.max_dimension,
                          hidden_layers=params.x0_hidden_layers)
 
-        self.phi_2 = Mlp(in_features=params.encoding0_dim,
+        self.phi_2 = Mlp(in_features=self.encoding0_dim,
                          out_features=params.max_dimension,
                          hidden_layers=params.x0_hidden_layers)
 
-        self.psi1 = TransformerModel(input_dim=params.encoding0_dim, 
-                                     nhead=params.psi1_nhead, 
+        self.psi1 = TransformerModel(input_dim=self.encoding0_dim, 
+                                     nhead=params.n_heads, 
                                      hidden_dim=params.psi1_hidden_dim, 
                                      nlayers=params.psi1_nlayers)
         
@@ -123,7 +125,7 @@ class FIMSDEp(pl.LightningModule):
                             query_dim=params.encoding0_dim)
 
         # Create the MultiheadAttention module
-        self.omega_1 = nn.MultiheadAttention(params.encoding0_dim, params.psi1_nhead)
+        self.omega_1 = nn.MultiheadAttention(self.encoding0_dim, params.n_heads)
 
     def forward(
             self,
@@ -173,20 +175,20 @@ class FIMSDEp(pl.LightningModule):
         time_encoding_ = self.phi_t0(obs_times.reshape(batch_size*num_steps,-1)) #(batch_size*num_steps,dim_time)
         x_enconding = self.phi_x0(obs_values.reshape(batch_size*num_steps,-1)) #(batch_size*num_steps,x0_out_features)
         H = torch.cat([time_encoding_,x_enconding],dim=1) #(batch_size*num_steps,encoding0_dim)
-        H  = H.reshape(batch_size,num_steps,self.params.encoding0_dim) 
+        H  = H.reshape(batch_size,num_steps,self.encoding0_dim) 
         H = self.psi1(torch.transpose(H,0,1)) # (seq_lenght,batch_size,encoding0_dim)
 
         # Trunk Queries ------------------
         hypercube_locations = hypercube_locations.reshape(batch_size*num_hyper,dimensions)
         tx = self.query_1x(hypercube_locations)  # Shape: (batch_size*num_steps, encoding0_dim)
         # Reshape queries to match the attention requirements
-        tx = tx.reshape(num_hyper, batch_size, self.params.encoding0_dim)  # Shape: (num_hyper, batch_size, encoding0_dim)
+        tx = tx.reshape(num_hyper, batch_size, self.encoding0_dim)  # Shape: (num_hyper, batch_size, encoding0_dim)
 
         # Representation per path
         # attn_output, _ = multihead_attn(queries[:,None,:].repeat(1,batch_size,1), H, H) # Shape: (1, batch_size, query_dim)
         attn_output, _ = self.omega_1(tx, H, H) # Shape: (num_hyper, batch_size, query_dim)
         attn_output = torch.transpose(attn_output,1,0) # Shape: (num_hyper, batch_size, query_dim)
-        attn_output = attn_output.reshape(num_hyper*batch_size,self.params.encoding0_dim)
+        attn_output = attn_output.reshape(num_hyper*batch_size,self.encoding0_dim)
 
         # obtain all heads
         f_hat = self.phi_2(attn_output).reshape(batch_size,num_hyper,dimensions)

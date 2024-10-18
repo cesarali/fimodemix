@@ -22,7 +22,7 @@ class FIMSDEpModelParams:
     max_num_steps:int = 1
 
     # model architecture --------------------------------------------------
-
+    n_heads: int = 4 # used for all transformers
     dim_time:int = 19
 
     # phi_0 / first data encoding
@@ -30,17 +30,14 @@ class FIMSDEpModelParams:
     x0_out_features: int = 21
     x0_dropout: float = 0.2
 
-    encoding0_dim:int = 40 #  x0_out_features + dim_time
-
+    encoding0_dim: int = 40
     #psi_1 / first transformer
-    psi1_nhead:int = 2
     psi1_hidden_dim:int = 300
     psi1_nlayers:int = 2
 
     #Multiheaded Attention 1 / first path summary
     query_dim:int = 10
 
-    n_heads: int = 4
     hidden_dim: int = 64
     output_size: int = 1
     batch_size: int = 32
@@ -57,14 +54,16 @@ class FIMSDEpModelParams:
     dt_pipeline:float = 0.01
     number_of_time_steps_pipeline:int = 128
 
-    def __post__init__(self):
-        self.encoding0_dim = self.x0_out_features + self.dim_time
-
     @classmethod
     def from_yaml(cls, yaml_path: str) -> 'FIMSDEpModelParams':
         with open(yaml_path, 'r') as file:
             params_dict = yaml.safe_load(file)
         return cls(**params_dict)
+    
+    def __post_init__(self):
+        self.dim_time = self.dim_time*self.n_heads
+        self.x0_out_features = self.x0_out_features*self.n_heads
+        self.encoding0_dim = self.x0_out_features + self.dim_time 
 
 # PATRIK FUNCTIONALITY ------------------------------------------
 @dataclass
@@ -169,3 +168,7 @@ def patrik_config_from_yaml(yaml_file: str) -> PatrikModelConfig:
 
 # Example usage
 # config = load_model_config_from_yaml('path_to_your_yaml_file.yaml')
+
+if __name__=="__main__":
+    params = FIMSDEpModelParams(dim_time=30,x0_out_features=20,n_heads=1)
+    print(params.encoding0_dim)
