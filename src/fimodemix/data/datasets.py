@@ -7,9 +7,6 @@ from collections import namedtuple
 from torch.utils.data import Dataset
 from fimodemix.data.generation_sde import generate_data
 
-route_to_ids = {"iv_bolus":0,"iv_infusion":1,"oral":2}
-study_to_ids = {"one_compartment_vf":0}
-
 @dataclass
 class FIMSDEpDatabatch:
     obs_values: torch.Tensor

@@ -14,7 +14,7 @@ def define_mask(X,databatch):
     return mask
 
 # Define Mesh Points
-def define_mesh_points(total_points = 100,n_dims = 1, ranges=[]):  # Number of dimensions
+def define_mesh_points(total_points = 100,n_dims = 1, ranges=[])->torch.Tensor:  # Number of dimensions
     """
     returns a points form the mesh defined in the range given the list ranges
     """
