@@ -7,6 +7,9 @@ from collections import namedtuple
 from torch.utils.data import Dataset
 from fimodemix.data.generation_sde import generate_data
 
+route_to_ids = {"iv_bolus":0,"iv_infusion":1,"oral":2}
+study_to_ids = {"one_compartment_vf":0}
+
 @dataclass
 class FIMSDEpDatabatch:
     obs_values: torch.Tensor
@@ -25,6 +28,28 @@ class FIMSDEpDatabatch:
     #f_strs: torch.Tensor = None
     #g_strs: torch.Tensor = None
 
+@dataclass
+class FIMCompartementsDatabatch:
+    obs_values: torch.Tensor
+    obs_times: torch.Tensor
+
+    dosing_values: torch.Tensor
+    dosing_times: torch.Tensor
+    dosing_routes: torch.Tensor
+    dosing_duration: torch.Tensor
+
+    covariates:torch.Tensor
+
+    hidden_values: torch.Tensor
+    vector_field_at_hypercube: torch.Tensor
+    hypercube_locations: torch.Tensor
+
+    model_parameters: torch.Tensor
+    error_parameters: torch.Tensor
+
+    study_ids:torch.Tensor
+    hidden_process_dimension:torch.Tensor
+
 # Define the named tuple
 FIMSDEpDatabatchTuple = namedtuple(
     'FIMSDEpDatabatchTuple',
@@ -39,6 +64,18 @@ FIMSDEpDatabatchTuple = namedtuple(
         'process_label',
         'process_dimension',
         'mask',
+    ]
+)
+
+FIMCompartementsDatabatchTuple = namedtuple(
+    'FIMCompartementsDatabatchTuple',
+    [
+        'obs_values', 'obs_times',
+        'dosing_values', 'dosing_times', 'dosing_routes', 'dosing_duration',
+        'covariates',
+        'hidden_values', 'vector_field_at_hypercube', 'hypercube_locations',
+        'model_parameters', 'error_parameters',
+        'study_ids', 'hidden_process_dimension'
     ]
 )
 
@@ -207,6 +244,29 @@ class FIMSDEpDataset(Dataset):
         param.max_dimension = self.max_dimension
         param.max_hypercube_size = self.max_hypercube_size
         param.max_num_steps = self.max_num_steps
+
+class FIMCompartmentModels(FIMSDEpDataset):
+
+    def __init__(self):
+        super(self).__init__()
+    
+    def _generate_synthetic_data(self,split:str)->List[str]:
+        """
+        Generates a mix data set with lorenz and dampend oscillator
+        system
+
+        Args
+            split (str) one of train, validation, test
+        Returns
+            filepaths (List[str])
+        """
+        from fimodemix import data_path
+        data_path = Path(data_path)
+        one_compartement_path = data_path / "parameters_sde" / "lorenz_{0}.tr".format(split)
+        file_paths = [one_compartement_path]
+        if not one_compartement_path.exists():
+            generate_data()
+        return file_paths
 
 if __name__=="__main__":
     # Example usage:

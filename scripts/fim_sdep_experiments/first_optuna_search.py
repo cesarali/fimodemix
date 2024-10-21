@@ -98,7 +98,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     pruner = optuna.pruners.MedianPruner() if args.pruning else optuna.pruners.NopPruner()
-
     study = optuna.create_study(direction="maximize", pruner=pruner)
     study.optimize(objective, n_trials=100, timeout=600)
 

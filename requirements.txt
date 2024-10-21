@@ -1,4 +1,6 @@
+tqdm
 lightning
 mlflow
 optuna
+tensorboardX
 optuna-integration[pytorch_lightning]
