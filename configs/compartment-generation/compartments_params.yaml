@@ -1,0 +1,68 @@
+experiment_name: dummy_one_compartment_experiment
+
+train:
+  - compartment_name_str: "one_compartment"
+    study_name_str: "study_1"
+    redo_study: false
+    N: 2000
+    t_obs: [0.5, 1, 3, 6, 12, 24]
+    D: 150
+    route: "oral"
+    fe:
+      V: 25
+      CL: 2.5
+    sd_re:
+      V: 0.35
+      CL: 0.25
+    sd_ruv: 0.15
+    num_hypercubes_points: 1024
+
+  - compartment_name_str: "one_compartment"
+    study_name_str: "study_2"
+    redo_study: false
+    N: 1000
+    t_obs: [1, 2, 4, 8, 16, 24, 48]
+    D: 200
+    route: "iv_bolus"
+    fe:
+      V: 30
+      CL: 4
+    sd_re:
+      V: 0.5
+      CL: 0.4
+    sd_ruv: 0.25
+    num_hypercubes_points: 1024
+
+test:
+  - compartment_name_str: "one_compartment"
+    study_name_str: "test_study"
+    redo_study: false
+    N: 500
+    t_obs: [0.5, 1, 3, 6, 12, 24]
+    D: 150
+    route: "oral"
+    fe:
+      V: 25
+      CL: 2.5
+    sd_re:
+      V: 0.35
+      CL: 0.25
+    sd_ruv: 0.15
+    num_hypercubes_points: 1024
+
+validation:
+  - compartment_name_str: "one_compartment"
+    study_name_str: "validation_study"
+    redo_study: false
+    N: 500
+    t_obs: [0.5, 1, 3, 6, 12, 24]
+    D: 150
+    route: "oral"
+    fe:
+      V: 25
+      CL: 2.5
+    sd_re:
+      V: 0.35
+      CL: 0.25
+    sd_ruv: 0.15
+    num_hypercubes_points: 1024

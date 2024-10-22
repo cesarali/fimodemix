@@ -25,27 +25,40 @@ class FIMSDEpDatabatch:
     #f_strs: torch.Tensor = None
     #g_strs: torch.Tensor = None
 
+from dataclasses import dataclass
+import numpy as np
+import torch
+
 @dataclass
 class FIMCompartementsDatabatch:
-    obs_values: torch.Tensor
-    obs_times: torch.Tensor
 
-    dosing_values: torch.Tensor
-    dosing_times: torch.Tensor
-    dosing_routes: torch.Tensor
-    dosing_duration: torch.Tensor
+    obs_values: torch.Tensor | np.ndarray
+    obs_times: torch.Tensor | np.ndarray
+    obs_mask: torch.Tensor | np.ndarray
+    dosing_values: torch.Tensor | np.ndarray
+    dosing_times: torch.Tensor | np.ndarray
+    dosing_routes: torch.Tensor | np.ndarray  # Assuming dosing routes are strings
+    dosing_duration: torch.Tensor | np.ndarray
+    dosing_mask: torch.Tensor | np.ndarray
+    covariates: torch.Tensor | np.ndarray
+    hidden_values: torch.Tensor | np.ndarray
+    vector_field_at_hypercube: torch.Tensor | np.ndarray
+    hypercube_locations: torch.Tensor | np.ndarray
+    model_parameters: torch.Tensor | np.ndarray
+    error_parameters: torch.Tensor | np.ndarray
+    study_ids: torch.Tensor | np.ndarray
+    hidden_process_dimension: torch.Tensor | np.ndarray
+    dimension_mask: torch.Tensor | np.ndarray
 
-    covariates:torch.Tensor
-
-    hidden_values: torch.Tensor
-    vector_field_at_hypercube: torch.Tensor
-    hypercube_locations: torch.Tensor
-
-    model_parameters: torch.Tensor
-    error_parameters: torch.Tensor
-
-    study_ids:torch.Tensor
-    hidden_process_dimension:torch.Tensor
+    def convert_to_tensors(self):
+        for field in self.__dataclass_fields__:
+            value = getattr(self, field)
+            if isinstance(value, np.ndarray):
+                try:
+                    setattr(self, field, torch.tensor(value))
+                except:
+                    print(f"Problem for field {field}")
+                    setattr(self, field, None)
 
 # Define the named tuple
 FIMSDEpDatabatchTuple = namedtuple(
@@ -64,17 +77,18 @@ FIMSDEpDatabatchTuple = namedtuple(
     ]
 )
 
+# Define the namedtuple which corresponds to the models databatch
 FIMCompartementsDatabatchTuple = namedtuple(
     'FIMCompartementsDatabatchTuple',
     [
-        'obs_values', 'obs_times',
-        'dosing_values', 'dosing_times', 'dosing_routes', 'dosing_duration',
-        'covariates',
-        'hidden_values', 'vector_field_at_hypercube', 'hypercube_locations',
+        'obs_values', 'obs_times','obs_mask',
+        'dosing_values', 'dosing_times', 'dosing_routes', 'dosing_duration','dosing_mask',
+        'covariates', 'hidden_values', 'vector_field_at_hypercube', 'hypercube_locations',
         'model_parameters', 'error_parameters',
-        'study_ids', 'hidden_process_dimension'
+        'study_ids', 'hidden_process_dimension','dimension_mask'
     ]
 )
+
 
 class FIMSDEpDataset(Dataset):
     """
@@ -264,10 +278,3 @@ class FIMCompartmentModels(FIMSDEpDataset):
         if not one_compartement_path.exists():
             generate_data()
         return file_paths
-
-if __name__=="__main__":
-    # Example usage:
-    dataset = FIMSDEpDataset()
-    data_loader = torch.utils.data.DataLoader(dataset, batch_size=24, shuffle=True)
-    databatch = next(data_loader.__iter__())
-    #print(databatch)

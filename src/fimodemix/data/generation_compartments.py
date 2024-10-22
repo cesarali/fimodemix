@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,28 +13,24 @@ from fimodemix.data.datasets import (
 )
 
 import abc
+import yaml
 import numpy as np
 from scipy.integrate import odeint
 from collections import namedtuple
 from scipy.integrate import odeint
 from dataclasses import dataclass, field
-
 from fimodemix.utils.grids import define_mesh_points
 
 ROUTE_TO_IDS = {"iv_bolus":0,"iv_infusion":1,"oral":2}
 STUDY_TO_IDS = {"one_compartment":0}
 
-# Define the namedtuple
-FIMCompartementsDatabatchTuple = namedtuple(
-    'FIMCompartementsDatabatchTuple',
-    [
-        'obs_values', 'obs_times','obs_mask',
-        'dosing_values', 'dosing_times', 'dosing_routes', 'dosing_duration','dosing_mask',
-        'covariates', 'hidden_values', 'vector_field_at_hypercube', 'hypercube_locations',
-        'model_parameters', 'error_parameters',
-        'study_ids', 'hidden_process_dimension','dimension_mask'
-    ]
-)
+
+@dataclass
+class CompartmentModelParams:
+    compartment_name_str: str = "compartment" # USED TO REGISTER THE MODEL
+    study_name_str:str = None # USED TO STORE THE MODEL SIMULATION
+    redo_study:bool = False
+    N: int = 1000  # Default number of individuals
 
 class CompartmentModel(abc.ABC):
     """
@@ -44,6 +42,17 @@ class CompartmentModel(abc.ABC):
         -define_individual_params
         -define_hypercube
 
+        Global Variables:
+            name_str (str): corresponds to the name of the particular
+            compartment model and is used in the model registry for 
+            later initialization, should match the name_str in the
+            parameters dataclass
+
+            params (dataclass): corresponds to the hyperparameters
+            given so that one is able to simulate a given population
+            study
+
+            hidden_process_dimension_ (int): dimension of hidden process
     """
     name_str:str
     params:dataclass
@@ -57,7 +66,7 @@ class CompartmentModel(abc.ABC):
         self.theta = self.define_individual_params()
 
     @abc.abstractmethod
-    def f_vector_field(self, y, t, param)->np.array:
+    def f_vector_field(self, x, t, param)->np.array:
         pass
     
     @abc.abstractmethod
@@ -85,7 +94,7 @@ class CompartmentModel(abc.ABC):
                       np.concatenate([[0], t_obs]), 
                       args=(theta_i,)).squeeze()
 
-    def simulate(self)->FIMCompartementsDatabatchTuple:
+    def simulate(self)->FIMCompartementsDatabatch:
         """
         First version using non efficient solver of odes
         for the compartment models.
@@ -153,15 +162,13 @@ class CompartmentModel(abc.ABC):
         hypercube_locations = np.stack(hypercube_locations,axis=0)
 
         # Placeholder arrays for other fields
-        covariates = np.zeros((self.params.N, 0))  # No covariates provided, set to empty
-
+        covariates = np.zeros((self.params.N, 1))  # No covariates provided, set to empty
         # Individual parameters
         model_parameters = self.theta  
         # Error parameters
         error_parameters = np.full((self.params.N,1),self.params.sd_ruv)  
 
-
-        return FIMCompartementsDatabatchTuple(
+        data =  FIMCompartementsDatabatch(
             obs_values=obs_values,
             obs_times=obs_times,
             obs_mask=None,
@@ -170,7 +177,7 @@ class CompartmentModel(abc.ABC):
             dosing_routes=dosing_routes,
             dosing_duration=dosing_duration,
             dosing_mask=None,
-            covariates=None,
+            covariates=covariates,
             hidden_values=hidden_values,
             vector_field_at_hypercube=vector_field_at_hypercube,
             hypercube_locations=hypercube_locations,
@@ -181,27 +188,36 @@ class CompartmentModel(abc.ABC):
             dimension_mask=None
         )
 
+        data.convert_to_tensors()
+        return data
+
 # ------------------------------------------------------------------------------------------
-# Define the different compartment model parameters
+# Define the different compartment models
 
 @dataclass
-class OneCompartmentModelParams:
+class OneCompartmentModelParams(CompartmentModelParams):
+    compartment_name_str: str = "one_compartment"
+    study_name_str:str = None
     N: int = 1000  # Default number of individuals
-    t_obs: np.ndarray = field(default_factory=lambda: np.array([0.5, 1, 2, 4, 8, 16, 24]))  # Default observation times
+    t_obs: List[float] = field(default_factory=lambda: [0.5, 1, 2, 4, 8, 16, 24])  # Default observation times as a list
     D: float = 100.  # Default dose administered (mg)
     route: str = 'iv_bolus'  # Default dosing route
     fe: dict = field(default_factory=lambda: {'V': 20, 'CL': 3})  # Default fixed effects (V, CL)
     sd_re: dict = field(default_factory=lambda: {'V': 0.4, 'CL': 0.3})  # Default random effects std devs (V, CL)
     sd_ruv: float = 0.2  # Default residual unexplained variability (mg/L)
-
-    num_hypercubes_points:int = 1024
+    num_hypercubes_points: int = 1024
 
 # Example subclass for a one-compartment model
 class OneCompartmentModel(CompartmentModel):
 
-    name_str:str = "one_compartment" #THIS IS THE KEY OF STUDY_TO_IDS
+     #THIS IS THE KEY OF STUDY_TO_IDS
+    name_str:str = "one_compartment"
     params:OneCompartmentModelParams = None
     hidden_process_dimension_:int = 1
+
+    def __init__(self,params):
+        super().__init__(params)
+        self.params.t_obs = np.asarray(self.params.t_obs)
 
     def f_vector_field(
             self, 
@@ -242,7 +258,7 @@ class OneCompartmentModel(CompartmentModel):
         dosing_values.append(np.array(x0))
         dosing_times.append(np.array(dosing_time0))
 
-        dosing_routes.append(np.asarray([self.params.route]))
+        dosing_routes.append(np.asarray([ROUTE_TO_IDS[self.params.route]]))
         dosing_duration.append(np.array([0.]))  # Assuming no duration for bolus
 
         return x0,dosing_values,dosing_times,dosing_routes,dosing_duration
@@ -261,4 +277,111 @@ class OneCompartmentModel(CompartmentModel):
                                                  ranges=[0.,self.params.D]).detach().numpy()
         return hypercube_locations
     
+# ------------------------------------------------------------------------------------------
+# MODEL REGISTRY
 
+COMPARTMENT_NAMES_TO_MODELS = {
+    "one_compartment":OneCompartmentModel
+}
+
+COMPARTMENT_NAMES_TO_PARMS = {
+    "one_compartment":OneCompartmentModelParams
+}
+
+def set_up_a_study(
+        params_yaml:dict,
+        experiment_dir:str,
+        return_data:bool=True,
+    )->CompartmentModel|FIMCompartementsDatabatch:
+    """
+    Takes a dict of parameters from yaml and creates
+    the Compartment model and generate the data accordingly
+    every time the data is generated it will be saved
+
+    Args:
+        -params_yaml (dict): compartment model parameters as dict
+        -experiment_dir (str): where all the models data is saved
+        -return_data (bool): if true returns the FIMCompartementsDatabatch 
+        otherwise the model
+    
+    Returns
+        CompartmentModel|FIMCompartementsDatabatch
+    """
+    compartment_name_str = params_yaml["compartment_name_str"]
+    study_name_str = params_yaml["study_name_str"]
+    redo_study = params_yaml["redo_study"]
+    study_path = Path(os.path.join(experiment_dir,study_name_str+".tr"))
+
+    # Create an instance of OneCompartmentModelParams with the loaded values
+    compartment_params = COMPARTMENT_NAMES_TO_PARMS[compartment_name_str](**params_yaml)
+    compartment_model = COMPARTMENT_NAMES_TO_MODELS[compartment_name_str](compartment_params)
+
+    if return_data:
+        data:FIMCompartementsDatabatch
+        # study data does not exist we generated again
+        if not study_path.exists():
+            data = compartment_model.simulate()
+            torch.save(data,study_path)
+            return data
+        else:
+            # data exist but we must simulate again
+            if redo_study:
+                data = compartment_model.simulate()
+                torch.save(data,study_path)
+                return data
+            # data exist and we take it
+            else:
+                data = torch.load(study_path)
+                return data
+            
+    return compartment_model
+
+def define_compartment_models_from_yaml(
+        yaml_file: str
+    )->Tuple[str,
+             List[CompartmentModel|FIMCompartementsDatabatch],
+             List[CompartmentModel|FIMCompartementsDatabatch],
+             List[CompartmentModel|FIMCompartementsDatabatch]]:
+    """
+    Function to load or generate different studies from a yaml file,
+    this is the function that will allow the dataloader to get the data
+    from the compartment studies
+    
+    Args:
+        yaml_file: str of yaml file that contains a list of hyper parameters 
+        from different compartment models, one such hyperparameters allows the 
+        solver to generate one population study
+    """
+    from fimodemix import data_path
+    with open(yaml_file, 'r') as file:
+        data = yaml.safe_load(file)
+
+    # check the experiment folder exist
+    experiment_name = data["experiment_name"]
+    experiment_dir = os.path.join(data_path,"compartment_model",experiment_name)
+    if not os.path.exists(experiment_dir):
+        # Create the folder
+        os.makedirs(experiment_dir)
+
+    # generate the data
+    train_studies:List[CompartmentModel] = []
+    test_studies:List[CompartmentModel] = []
+    validation_studies:List[CompartmentModel] = []
+    for params_yaml in data['train']:        
+        compartment_model = set_up_a_study(params_yaml,experiment_dir)
+        train_studies.append(compartment_model)
+
+    for params_yaml in data['test']:        
+        compartment_model = set_up_a_study(params_yaml,experiment_dir)
+        test_studies.append(compartment_model)
+
+    for params_yaml in data['validation']:        
+        compartment_model = set_up_a_study(params_yaml,experiment_dir)
+        validation_studies.append(compartment_model)
+
+    return (
+        experiment_name,
+        train_studies,
+        test_studies,
+        validation_studies
+    )
