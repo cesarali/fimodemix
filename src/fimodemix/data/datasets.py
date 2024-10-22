@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from collections import namedtuple
 from torch.utils.data import Dataset
 from fimodemix.data.generation_sde import generate_data
+from fimodemix.configs.config_classes.fim_compartments_config import FIMCompartmentModelParams
 
 @dataclass
 class FIMSDEpDatabatch:
@@ -31,7 +32,9 @@ import torch
 
 @dataclass
 class FIMCompartementsDatabatch:
-
+    """
+    data class which comprises the preprocessed data requiered for the comparment models
+    """
     obs_values: torch.Tensor | np.ndarray
     obs_times: torch.Tensor | np.ndarray
     obs_mask: torch.Tensor | np.ndarray
@@ -78,7 +81,7 @@ FIMSDEpDatabatchTuple = namedtuple(
 )
 
 # Define the namedtuple which corresponds to the models databatch
-FIMCompartementsDatabatchTuple = namedtuple(
+FIMCompartementsDatabatchTupleFinal = namedtuple(
     'FIMCompartementsDatabatchTuple',
     [
         'obs_values', 'obs_times','obs_mask',
@@ -89,6 +92,16 @@ FIMCompartementsDatabatchTuple = namedtuple(
     ]
 )
 
+FIMCompartementsDatabatchTuple = namedtuple(
+    'FIMCompartementsDatabatchTuple',
+    [
+        'obs_values', 'obs_times',
+        'dosing_values', 'dosing_times', 'dosing_routes', 'dosing_duration',
+        'covariates', 'hidden_values', 'vector_field_at_hypercube', 'hypercube_locations',
+        'model_parameters', 'error_parameters',
+        'study_ids', 'hidden_process_dimension'
+    ]
+)
 
 class FIMSDEpDataset(Dataset):
     """
@@ -256,25 +269,156 @@ class FIMSDEpDataset(Dataset):
         param.max_hypercube_size = self.max_hypercube_size
         param.max_num_steps = self.max_num_steps
 
-class FIMCompartmentModels(FIMSDEpDataset):
-
-    def __init__(self):
-        super(self).__init__()
+class FIMCompartmentDataset(Dataset):
+    """
+    """
+    def __init__(
+            self,
+            params:FIMCompartmentModelParams,
+            compartment_data:List[FIMCompartementsDatabatch],
+        ):
+        """
+        Args:
+            compartment_data (List[FIMCompartementsDatabatch]): list of data 
+            from studies corrsponding to this data set
+        """
+        # To keep track of the number of samples in each file
+        self.data = compartment_data
+        # Load data and compute cumulative lengths
+        self.set_lenghts()
     
-    def _generate_synthetic_data(self,split:str)->List[str]:
+    def set_lenghts(self):
         """
-        Generates a mix data set with lorenz and dampend oscillator
-        system
+        we set the lenght per study
+        """
+        self.lengths = [] 
 
-        Args
-            split (str) one of train, validation, test
-        Returns
-            filepaths (List[str])
+        self.max_time_steps = 1
+        self.max_dosing_steps = 1
+
+        self.max_dimension = 1
+        self.max_hidden_dimension = 1
+
+        self.max_hypercube_size = 1
+        self.max_param_size = 1
+        self.max_dosing_times = 1
+
+        for data_study in self.data:
+            self.lengths.append(data_study.obs_values.size(0))  # Number of samples in this file
+            # Update max dimensions
+            self.max_dimension = max(self.max_dimension, data_study.obs_values.size(2))
+            self.max_hidden_dimension = max(self.max_hidden_dimension, data_study.hidden_values.size(2))
+
+            self.max_time_steps = max(self.max_time_steps,data_study.obs_values.size(1))
+            self.max_dosing_steps = max(self.max_dosing_steps,data_study.dosing_times.size(1))
+
+            self.max_hypercube_size = max(self.max_hypercube_size, data_study.vector_field_at_hypercube.size(1))
+            self.max_param_size = max(self.max_param_size,data_study.model_parameters.size(1))
+            self.max_dosing_times = max(self.max_param_size,data_study.dosing_times.size(1))
+
+        print(f'Max Hypercube Size: {self.max_hypercube_size}')
+        print(f'Max Dimension: {self.max_dimension}')
+        print(f'Max Time Steps: {self.max_time_steps}')
+        print(f'Max Dosing Time Steps: {self.max_dosing_steps}')
+        
+        self.cumulative_lengths = np.cumsum(self.lengths)
+
+    def _get_file_and_sample_index(self, idx):
+        """Helper function to determine the file index and sample index."""
+        file_idx = np.searchsorted(self.cumulative_lengths, idx,"right")
+        sample_idx = idx if file_idx == 0 else idx - self.cumulative_lengths[file_idx - 1]
+        return file_idx, sample_idx
+    
+    def __len__(self):
+        return sum(self.lengths)  # Total number of samples
+
+    def __getitem__(self, idx) -> FIMCompartementsDatabatchTuple:
+        # Obtains index of the associated file and item within the file
+        file_idx, sample_idx = self._get_file_and_sample_index(idx)
+
+        #models variables
+        covariates = self.data[file_idx].covariates[sample_idx]
+        model_parameters = self.data[file_idx].model_parameters[sample_idx]
+        error_parameters = self.data[file_idx].error_parameters[sample_idx]
+
+        # Get the tensor from the appropriate file
+        obs_values = self.data[file_idx].obs_values[sample_idx]
+        obs_times = self.data[file_idx].obs_times[sample_idx]
+        hidden_values = self.data[file_idx].hidden_values[sample_idx]
+
+        # obs_mask = self.data[file_idx].obs_mask[sample_idx] #MASK NOT IMPLEMENTED YET
+        dosing_values = self.data[file_idx].dosing_values[sample_idx]
+        dosing_times = self.data[file_idx].dosing_times[sample_idx]
+        dosing_routes = self.data[file_idx].dosing_routes[sample_idx]
+        dosing_duration = self.data[file_idx].dosing_duration[sample_idx]
+        # dosing_mask = self.data[file_idx].dosing_mask[sample_idx] #MASK NOOT IMPLEMENTED YET
+
+        vector_field_at_hypercube = self.data[file_idx].vector_field_at_hypercube[sample_idx]
+        hypercube_locations = self.data[file_idx].hypercube_locations[sample_idx]
+
+        study_ids = self.data[file_idx].study_ids[sample_idx]
+        hidden_process_dimension = self.data[file_idx].hidden_process_dimension[sample_idx]
+        #dimension_mask = self.data[file_idx].dimension_mask[sample_idx] #MASK NOT IMPLEMENTED YET
+
+        # ensure that accross files same batch size is obtained
+        model_parameters,error_parameters = self._pad_model_parameters(model_parameters,error_parameters)
+        obs_values,obs_times,hidden_values,obs_mask = self._pad_observations(obs_values,obs_times,hidden_values,obs_mask=None)
+        dosing_values,dosing_duration,dosing_routes,dosing_mask = self._pad_dosings(dosing_values,dosing_duration,dosing_routes,dosing_mask=None)
+        vector_field_at_hypercube, hypercube_locations,dimension_mask = self._pad_hypercubes(vector_field_at_hypercube, hypercube_locations)
+        
+        # Create and return the dataclass instance
+        return FIMCompartementsDatabatchTuple(
+            obs_values=obs_values,
+            obs_times=obs_times,
+            #obs_mask=obs_mask,
+            dosing_values=dosing_values,
+            dosing_times=dosing_times,
+            dosing_routes=dosing_routes,
+            dosing_duration=dosing_duration,
+            #dosing_mask=dosing_mask,
+            covariates=covariates,
+            hidden_values=hidden_values,
+            vector_field_at_hypercube=vector_field_at_hypercube,
+            hypercube_locations=hypercube_locations,
+            model_parameters=model_parameters,
+            error_parameters=error_parameters,
+            study_ids=study_ids,
+            hidden_process_dimension=hidden_process_dimension,
+            #dimension_mask=dimension_mask
+        )
+    
+    def _pad_observations(self,obs_values,obs_times,hidden_values,obs_mask):
         """
-        from fimodemix import data_path
-        data_path = Path(data_path)
-        one_compartement_path = data_path / "parameters_sde" / "lorenz_{0}.tr".format(split)
-        file_paths = [one_compartement_path]
-        if not one_compartement_path.exists():
-            generate_data()
-        return file_paths
+        makes sure all observations have the same size in dimension and time
+        """
+        current_hidden_dimension = hidden_values.size(1)
+        current_dimension = obs_values.size(1)
+        current_time = obs_values.size(0)
+
+        hidden_padding_size = self.max_hidden_dimension - current_hidden_dimension
+        dim_padding_size = self.max_dimension - current_dimension
+        time_padding_size = self.max_time_steps - current_time
+
+        if dim_padding_size > 0 or time_padding_size > 0 or hidden_padding_size > 0:
+            obs_values = torch.nn.functional.pad(obs_values, (0, dim_padding_size,0,time_padding_size))
+            obs_times = torch.nn.functional.pad(obs_values, (0, dim_padding_size,0,time_padding_size))
+            hidden_values = torch.nn.functional.pad(obs_values, (0, hidden_padding_size,0,time_padding_size))
+
+        return obs_values,obs_times,hidden_values,obs_mask
+
+    def _pad_dosings(self,dosing_values,dosing_duration,dosing_routes,dosing_mask):
+        return dosing_values,dosing_duration,dosing_routes,dosing_mask
+
+    def _pad_hypercubes(self,vector_field_at_hypercube, hypercube_locations):
+        return vector_field_at_hypercube, hypercube_locations,None
+
+    def _pad_model_parameters(self,model_parameters,error_parameters):
+        return model_parameters,error_parameters
+
+
+
+
+
+
+
+    

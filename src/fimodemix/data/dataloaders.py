@@ -2,12 +2,12 @@ import logging
 from pathlib import Path
 from datetime import datetime
 from functools import partial
-from typing import List, Optional, Union
+from typing import List, Optional, Union,Dict
 
 import torch
 import pandas as pd
 import torch.distributed as dist
-from torch.utils.data.dataloader import DataLoader
+from torch.utils.data.dataloader import DataLoader,Dataset
 import lightning.pytorch as pl
 from fimodemix.data.datasets import (
     FIMSDEpDataset,
@@ -17,6 +17,66 @@ from fimodemix.data.datasets import (
 from fimodemix.configs.config_classes.fim_sde_config import FIMSDEpModelParams
 
 #DistributedSampler = torch.utils.data.distributed.DistributedSampler
+
+class FIMDataloader():
+
+    iter:Dict[str,DataLoader]
+    dataset:Dict[str,Dataset]
+
+    def __init__(self):
+        pass
+    
+    @property
+    def one_batch(self)->FIMSDEpDatabatchTuple|FIMSDEpDatabatch:
+        return next(self.iter["train"].__iter__())
+    
+    @property
+    def train(self):
+        return self.dataset["train"]
+
+    @property
+    def train_it(self) -> DataLoader:
+        return self.iter["train"]
+
+    @property
+    def validation(self):
+        return self.dataset["validation"]
+
+    @property
+    def validation_it(self) -> DataLoader:
+        return self.iter["validation"]
+
+    @property
+    def test(self):
+        return self.dataset["test"]
+
+    @property
+    def test_it(self) -> DataLoader:
+        return self.iter["test"]
+
+    @property
+    def n_train_batches(self):
+        return len(self.train_it)
+
+    @property
+    def n_validation_batches(self):
+        return len(self.validation_it)
+
+    @property
+    def n_test_batches(self):
+        return len(self.test_it)
+
+    @property
+    def train_set_size(self):
+        return len(self.train)
+
+    @property
+    def validation_set_size(self):
+        return len(self.validation)
+
+    @property
+    def test_set_size(self):
+        return len(self.test)
 
 class FIMSDEpDataLoader():
     """Datalaoder for time series data in torch format."""
@@ -137,3 +197,25 @@ class FIMSDEpDataModule(pl.LightningDataModule):
     def test_dataloader(self) -> DataLoader:
         return self.dataloaders.test_it
 
+from fimodemix.data.datasets import FIMCompartmentDataset
+from fimodemix.configs.config_classes.fim_compartments_config import FIMCompartmentModelParams
+from fimodemix.data.generation_compartments import define_compartment_models_from_yaml
+
+class FIMCompartmentDataloader(FIMDataloader):
+    """
+    Dataloader class for first compartment models
+    """
+    def __init__(self,params:FIMCompartmentModelParams):
+        super().__init__()
+        compartments_hyperparameters_file = params.compartments_hyperparameters_file
+        datas = define_compartment_models_from_yaml(compartments_hyperparameters_file)
+        experiment_name,train_studies,test_studies, validation_studies = datas
+
+        train_dataset = FIMCompartmentDataset(params,
+                                              train_studies)
+        
+    def _init_datasets(self):
+        self.dataset = None
+        
+    def _init_dataloaders(self):
+        self.iter = None

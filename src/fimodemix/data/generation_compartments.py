@@ -253,9 +253,9 @@ class OneCompartmentModel(CompartmentModel):
             dosing_duration
         )->Tuple[np.array,List,List,List,List]:
         """simple models assumes initial condition as the dosing"""
-        x0 = [float(self.params.D)]  # Initial amount in plasma = dose
+        x0 = np.asarray([float(self.params.D)])  # Initial amount in plasma = dose
         dosing_time0 = [float(0.)]  # Time of dose
-        dosing_values.append(np.array(x0))
+        dosing_values.append(x0)
         dosing_times.append(np.array(dosing_time0))
 
         dosing_routes.append(np.asarray([ROUTE_TO_IDS[self.params.route]]))
@@ -276,6 +276,16 @@ class OneCompartmentModel(CompartmentModel):
                                                  n_dims=1,
                                                  ranges=[0.,self.params.D]).detach().numpy()
         return hypercube_locations
+
+    def simulate(self):
+        """
+        fix dimensions since odesolver for 1D ignores last shape
+        expected shape for obs values is [B,T,D]
+        """
+        data:FIMCompartementsDatabatch = super().simulate()    
+        data.hidden_values = data.hidden_values.unsqueeze(-1)
+        data.obs_values = data.obs_values.unsqueeze(-1)
+        return data
     
 # ------------------------------------------------------------------------------------------
 # MODEL REGISTRY
@@ -350,7 +360,7 @@ def define_compartment_models_from_yaml(
     Args:
         yaml_file: str of yaml file that contains a list of hyper parameters 
         from different compartment models, one such hyperparameters allows the 
-        solver to generate one population study
+        the set_up_a_study function (above) to generate one population study
     """
     from fimodemix import data_path
     with open(yaml_file, 'r') as file:

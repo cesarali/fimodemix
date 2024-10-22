@@ -7,9 +7,10 @@ from fimodemix import data_path
 @dataclass
 class FIMCompartmentModelParams:
     # data ------------------------------------------------------------------
-    data_name = "dummy_lorenz_damped"
-    data_path = str(data_path)
-    input_size: int = 1  # Original input size
+    data_name:str = "dummy_compartment_damped"
+    data_path:str = str(data_path)
+    compartments_hyperparameters_file:str = r"C:\Users\cesar\Desktop\Projects\FoundationModels\fimodemix\configs\compartment-generation\compartments_params.yaml"
+
     batch_size:int = 32
     test_batch_size:int = 32
 
