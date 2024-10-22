@@ -285,23 +285,23 @@ class FIMCompartmentDataset(Dataset):
         # To keep track of the number of samples in each file
         self.data = compartment_data
         # Load data and compute cumulative lengths
-        self.set_lenghts()
-    
-    def set_lenghts(self):
+        self.set_lenghts(params)
+        self.update_parameters(params)
+
+    def set_lenghts(self,params:FIMCompartmentModelParams):
         """
         we set the lenght per study
         """
         self.lengths = [] 
 
-        self.max_time_steps = 1
-        self.max_dosing_steps = 1
+        self.max_time_steps = params.max_time_steps
+        self.max_dosing_steps = params.max_dosing_steps
 
-        self.max_dimension = 1
-        self.max_hidden_dimension = 1
+        self.max_dimension = params.max_dimension
+        self.max_hidden_dimension = params.max_hidden_dimension
 
-        self.max_hypercube_size = 1
-        self.max_param_size = 1
-        self.max_dosing_times = 1
+        self.max_hypercube_size = params.max_hypercube_size
+        self.max_param_size = params.max_param_size
 
         for data_study in self.data:
             self.lengths.append(data_study.obs_values.size(0))  # Number of samples in this file
@@ -314,7 +314,6 @@ class FIMCompartmentDataset(Dataset):
 
             self.max_hypercube_size = max(self.max_hypercube_size, data_study.vector_field_at_hypercube.size(1))
             self.max_param_size = max(self.max_param_size,data_study.model_parameters.size(1))
-            self.max_dosing_times = max(self.max_param_size,data_study.dosing_times.size(1))
 
         print(f'Max Hypercube Size: {self.max_hypercube_size}')
         print(f'Max Dimension: {self.max_dimension}')
@@ -366,6 +365,18 @@ class FIMCompartmentDataset(Dataset):
         dosing_values,dosing_duration,dosing_routes,dosing_mask = self._pad_dosings(dosing_values,dosing_duration,dosing_routes,dosing_mask=None)
         vector_field_at_hypercube, hypercube_locations,dimension_mask = self._pad_hypercubes(vector_field_at_hypercube, hypercube_locations)
         
+        # Debug: print shapes of tensors before padding
+        #print(f"model_parameters shape: {model_parameters.shape}")
+        #print(f"error_parameters shape: {error_parameters.shape}")
+        #print(f"obs_values shape: {obs_values.shape}")
+        #print(f"obs_times shape: {obs_times.shape}")
+        #print(f"hidden_values shape: {hidden_values.shape}")
+        #print(f"dosing_values shape: {dosing_values.shape}")
+        #print(f"dosing_duration shape: {dosing_duration.shape}")
+        #print(f"dosing_routes shape: {dosing_routes.shape}")
+        #print(f"vector_field_at_hypercube shape: {vector_field_at_hypercube.shape}")
+        #print(f"hypercube_locations shape: {hypercube_locations.shape}")
+        
         # Create and return the dataclass instance
         return FIMCompartementsDatabatchTuple(
             obs_values=obs_values,
@@ -401,8 +412,8 @@ class FIMCompartmentDataset(Dataset):
 
         if dim_padding_size > 0 or time_padding_size > 0 or hidden_padding_size > 0:
             obs_values = torch.nn.functional.pad(obs_values, (0, dim_padding_size,0,time_padding_size))
-            obs_times = torch.nn.functional.pad(obs_values, (0, dim_padding_size,0,time_padding_size))
-            hidden_values = torch.nn.functional.pad(obs_values, (0, hidden_padding_size,0,time_padding_size))
+            obs_times = torch.nn.functional.pad(obs_times, (0,time_padding_size))
+            hidden_values = torch.nn.functional.pad(hidden_values, (0, hidden_padding_size,0,time_padding_size))
 
         return obs_values,obs_times,hidden_values,obs_mask
 
@@ -414,9 +425,21 @@ class FIMCompartmentDataset(Dataset):
 
     def _pad_model_parameters(self,model_parameters,error_parameters):
         return model_parameters,error_parameters
+    
+    def update_parameters(self, param:FIMCompartmentModelParams):
+        """
+        ensures that accross datasets the maximum of such values are kept
+        """
+        # Update all relevant parameters from self to param
+        param.max_time_steps = self.max_time_steps
+        param.max_dosing_steps = self.max_dosing_steps
 
+        param.max_dimension = self.max_dimension
+        param.max_hidden_dimension = self.max_hidden_dimension
 
-
+        param.max_hypercube_size = self.max_hypercube_size
+        param.max_param_size = self.max_param_size
+        #print(param)
 
 
 

@@ -37,10 +37,24 @@ def test_compartment_dataset():
     databatch:FIMCompartementsDatabatchTuple = next(dataloader.__iter__())
     print(databatch.obs_values.shape)
     
-
 def test_compartment_dataloaders():
     params = FIMCompartmentModelParams()
     dataloaders = FIMCompartmentDataloader(params)
 
+    print("test")
+    for databatch in dataloaders.test_it:
+        databatch:FIMCompartementsDatabatchTuple
+        print(databatch.hidden_values.shape)
+
+    print("train")
+    for databatch in dataloaders.train_it:
+        databatch:FIMCompartementsDatabatchTuple
+        print(databatch.hidden_values.shape)
+
+    print("validation")
+    for databatch in dataloaders.validation_it:
+        databatch:FIMCompartementsDatabatchTuple
+        print(databatch.hidden_values.shape)
+
 if __name__=="__main__":
-    test_compartment_dataset()
+    test_compartment_dataloaders()

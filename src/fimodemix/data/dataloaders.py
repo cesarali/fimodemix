@@ -16,6 +16,16 @@ from fimodemix.data.datasets import (
 )
 from fimodemix.configs.config_classes.fim_sde_config import FIMSDEpModelParams
 
+
+from fimodemix.data.datasets import (
+    FIMCompartmentDataset,
+    FIMCompartementsDatabatchTuple,
+    FIMCompartementsDatabatch
+)
+
+from fimodemix.configs.config_classes.fim_compartments_config import FIMCompartmentModelParams
+from fimodemix.data.generation_compartments import define_compartment_models_from_yaml
+
 #DistributedSampler = torch.utils.data.distributed.DistributedSampler
 
 class FIMDataloader():
@@ -23,12 +33,27 @@ class FIMDataloader():
     iter:Dict[str,DataLoader]
     dataset:Dict[str,Dataset]
 
-    def __init__(self):
-        pass
+    def __init__(self,params):
+        self.params = params
+        self.batch_size = params.batch_size
+        self.test_batch_size = params.test_batch_size
     
-    @property
-    def one_batch(self)->FIMSDEpDatabatchTuple|FIMSDEpDatabatch:
-        return next(self.iter["train"].__iter__())
+    def _init_dataloaders(self, dataset):
+        self.iter = {}
+        for n, d in dataset.items():
+            sampler = None
+            #if is_distributed():
+            #    sampler = DistributedSampler(d, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=n == "train")
+            batch_size = self.batch_size
+            if n != "train":
+                batch_size = self.test_batch_size
+            self.iter[n] = DataLoader(
+                d,
+                drop_last=False,
+                sampler=sampler,
+                shuffle=sampler is None and n == "train",
+                batch_size=batch_size,
+            )
     
     @property
     def train(self):
@@ -197,25 +222,34 @@ class FIMSDEpDataModule(pl.LightningDataModule):
     def test_dataloader(self) -> DataLoader:
         return self.dataloaders.test_it
 
-from fimodemix.data.datasets import FIMCompartmentDataset
-from fimodemix.configs.config_classes.fim_compartments_config import FIMCompartmentModelParams
-from fimodemix.data.generation_compartments import define_compartment_models_from_yaml
-
 class FIMCompartmentDataloader(FIMDataloader):
     """
     Dataloader class for first compartment models
     """
     def __init__(self,params:FIMCompartmentModelParams):
-        super().__init__()
+        super().__init__(params)
         compartments_hyperparameters_file = params.compartments_hyperparameters_file
         datas = define_compartment_models_from_yaml(compartments_hyperparameters_file)
         experiment_name,train_studies,test_studies, validation_studies = datas
+        self._init_datasets(
+            params,train_studies,test_studies, validation_studies
+        )
+        self._init_dataloaders(self.dataset)
 
+    def _init_datasets(self,params,train_studies,test_studies, validation_studies):
         train_dataset = FIMCompartmentDataset(params,
                                               train_studies)
         
-    def _init_datasets(self):
-        self.dataset = None
+        test_dataset = FIMCompartmentDataset(params,
+                                              test_studies)
+
+        validation_dataset = FIMCompartmentDataset(params,
+                                                   validation_studies)
         
-    def _init_dataloaders(self):
-        self.iter = None
+        self.dataset = {"train":train_dataset,
+                        "test":test_dataset,
+                        "validation":validation_dataset}
+        
+    @property
+    def one_batch(self)->FIMCompartementsDatabatchTuple|FIMCompartementsDatabatch:
+        return next(self.iter["train"].__iter__())

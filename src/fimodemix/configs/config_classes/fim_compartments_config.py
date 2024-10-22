@@ -17,10 +17,17 @@ class FIMCompartmentModelParams:
     #experiments
     experiment_name:str = "test"
     
-    # these values are updated after dataset is read
-    max_dimension:int = 1
-    max_hypercube_size:int = 1
-    max_num_steps:int = 1
+    # these values are updated after dataset is read ------------------------
+    max_dimension: int = 1
+    max_hypercube_size: int = 1
+    max_num_steps: int = 1
+
+    # Additional parameters -------------------------------------------------
+    max_time_steps: int = 1
+    max_dosing_steps: int = 1
+    max_hidden_dimension: int = 1
+    max_param_size: int = 1
+    max_dosing_times: int = 1
 
     # model architecture --------------------------------------------------
     n_heads: int = 4 # used for all transformers
